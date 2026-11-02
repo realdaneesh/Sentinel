@@ -1,0 +1,21 @@
+{
+  "valid": [
+    {"schema_version":"1.0","event_id":"evt-001","user_id":"alice","event_type":"LOGIN_FAILURE","timestamp":"2026-11-02T12:00:00Z","ip_address":"192.0.2.1","device_id":"device-1","source":"sentinel-simulator"},
+    {"schema_version":"1.0","event_id":"evt-002","user_id":"bob","event_type":"LOGIN_SUCCESS","timestamp":"2026-11-02T12:00:00.123456+00:00","ip_address":"2001:db8::1","source":"sentinel-simulator"}
+  ],
+  "invalid": [
+    {"name":"missing user","patch":{},"remove":["user_id"],"field":"user_id"},
+    {"name":"unknown field","patch":{"identity":"alice"},"field":"identity"},
+    {"name":"unsupported version","patch":{"schema_version":"2.0"},"field":"schema_version"},
+    {"name":"unknown type","patch":{"event_type":"PASSWORD_RESET"},"field":"event_type"},
+    {"name":"naive time","patch":{"timestamp":"2026-11-02T12:00:00"},"field":"timestamp"},
+    {"name":"non UTC time","patch":{"timestamp":"2026-11-02T17:30:00+05:30"},"field":"timestamp"},
+    {"name":"invalid calendar date","patch":{"timestamp":"2026-02-30T12:00:00Z"},"field":"timestamp"},
+    {"name":"invalid IP","patch":{"ip_address":"999.1.1.1"},"field":"ip_address"},
+    {"name":"zone ID","patch":{"ip_address":"fe80::1%eth0"},"field":"ip_address"},
+    {"name":"null device","patch":{"device_id":null},"field":"device_id"},
+    {"name":"blank user","patch":{"user_id":" "},"field":"user_id"},
+    {"name":"wrong ID type","patch":{"event_id":123},"field":"event_id"},
+    {"name":"blank source","patch":{"source":""},"field":"source"}
+  ]
+}

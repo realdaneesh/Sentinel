@@ -1,0 +1,19 @@
+{
+  "valid": [
+    {"schema_version":"1.0","event_id":"evt-001","risk_score":null,"severity":"UNKNOWN","reasons":["5 LOGIN_FAILURE events for identity 'alice' in the last 15 minutes; threshold of 5 met."],"detector_version":"example-release-1"},
+    {"schema_version":"1.0","event_id":"evt-002","risk_score":0,"severity":"LOW","reasons":[],"detector_version":"future-scorer-example"},
+    {"schema_version":"1.0","event_id":"evt-003","risk_score":100,"severity":"CRITICAL","reasons":["Illustrative future scoring result; scoring is not implemented."],"detector_version":"future-scorer-example"}
+  ],
+  "invalid": [
+    {"name":"missing version","patch":{},"remove":["detector_version"],"field":"detector_version"},
+    {"name":"negative score","patch":{"risk_score":-1,"severity":"LOW"},"field":"risk_score"},
+    {"name":"score above maximum","patch":{"risk_score":101,"severity":"HIGH"},"field":"risk_score"},
+    {"name":"boolean score","patch":{"risk_score":true,"severity":"LOW"},"field":"risk_score"},
+    {"name":"fractional score","patch":{"risk_score":2.5,"severity":"LOW"},"field":"risk_score"},
+    {"name":"unscored severity","patch":{"severity":"HIGH"},"field":"severity"},
+    {"name":"scored unknown severity","patch":{"risk_score":50},"field":"severity"},
+    {"name":"scalar reasons","patch":{"reasons":"failure"},"field":"reasons"},
+    {"name":"empty reason","patch":{"reasons":[""]},"field":"reasons"},
+    {"name":"rule output is not envelope","patch":{"triggered":true},"field":"triggered"}
+  ]
+}
