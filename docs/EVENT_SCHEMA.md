@@ -1,8 +1,9 @@
 # Authentication event contract v1
 
-Status: proposed shared contract. Ingestion, persistence, result orchestration,
-and risk scoring are not implemented by this document. The existing failed-login
-rule is implemented separately in `services/detection/rules.py`.
+Status: proposed shared contract. Ingestion, persistence, and result orchestration
+are not implemented by this document. The existing failed-login rule is implemented
+separately in `services/detection/rules.py`; standalone signal scoring is described
+in [RISK_SCORING.md](RISK_SCORING.md).
 
 ## Event JSON
 
@@ -68,12 +69,15 @@ other events for that identity. Optional fields are not defined in v1.
 | reasons | yes | Array of nonempty, trimmed strings, each at most 1024 characters; empty allowed |
 | detector_version | yes | Nonempty, trimmed implementation identifier, at most 128 characters |
 
-Risk scoring is a **future component**. Pending scoring must use `risk_score: null`
-and `severity: "UNKNOWN"`, never a fabricated zero. A numeric score requires a
-non-UNKNOWN severity. Severity bands and score calibration must be agreed before
-the future scorer ships; v1 does not infer severity from the burst rule. `reasons`
-can contain the actual rule explanation without implying a risk score. Fixtures
-with numeric scores illustrate future envelope validation only.
+Standalone signal scoring is implemented, but event-level integration remains
+future work. Pending scoring must use `risk_score: null` and `severity: "UNKNOWN"`,
+never a fabricated zero. A numeric score requires a non-UNKNOWN severity. The
+scorer defines LOW 0–24, MEDIUM 25–49, HIGH 50–74, and CRITICAL 75–100; these are
+heuristic bands, not calibrated probabilities. The contract does not infer a
+score from the burst rule. `reasons` can contain the actual rule explanation
+without implying a risk score. Fixtures with numeric scores illustrate envelope
+validation only. The internal scoring result is not this envelope; see
+[scorer integration](RISK_SCORING.md#future-event-level-integration).
 
 The rule currently returns `rule_id`, `triggered`, `failed_attempts`, and singular
 `reason`. It returns no event ID, score, severity, or detector version. A future
