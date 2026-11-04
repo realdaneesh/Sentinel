@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 
 from services.detection.rules import detect_failed_login_burst
+from services.simulator import SCENARIOS, generate_events
 
 
 FIXTURES = Path(__file__).parents[1] / "fixtures" / "contracts"
@@ -79,6 +80,13 @@ def validate(payload, kind):
 def test_valid_fixtures(kind):
     for payload in load(kind)["valid"]:
         assert validate(payload, kind) == set()
+
+
+@pytest.mark.parametrize("scenario", SCENARIOS)
+@pytest.mark.parametrize("seed", [0, 42, -7])
+def test_simulator_events_follow_shared_contract(scenario, seed):
+    for payload in generate_events(scenario, seed=seed):
+        assert validate(payload, "events") == set()
 
 
 INVALID_CASES = [
