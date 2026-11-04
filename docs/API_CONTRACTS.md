@@ -114,9 +114,11 @@ the count. It returns `{rule_id, triggered, failed_attempts, reason}` only.
 4. Preserve this rule output as evidence. A future orchestrator can associate it
    with the accepted `event_id` and configured `detector_version`, using
    `reasons: [result["reason"]]`, `risk_score: null`, and `severity: "UNKNOWN"`
-   until scoring exists. Neither a triggered burst nor a non-triggered burst
-   currently has a defined numerical score. No adapter or envelope generation
-   has been added to production code in this change.
+   while scoring is pending. The standalone [risk scorer](RISK_SCORING.md) accepts
+   `failed_login_burst` only when this rule's `triggered` flag is true; it assigns
+   35 points by default. A non-triggered rule supplies no signal. The scorer's
+   result is internal and must be explicitly adapted into the event-level
+   envelope. No adapter or envelope generation has been added to production code.
 5. Run `python -m pytest -q` from the repository root. Contract fixture validation
    uses only the standard library plus the existing pytest dependency. The adapter
    integration test verifies compatibility with the unchanged detector. Backend
