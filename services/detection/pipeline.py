@@ -7,7 +7,7 @@ import re
 from typing import TypedDict
 
 from .risk_scoring import score_risk
-from .rules import detect_failed_login_burst
+from .rules import detect_failed_login_burst, detect_unfamiliar_login_signals
 
 
 _UTC_TIMESTAMP = re.compile(
@@ -71,6 +71,7 @@ def _validate_event(event: object, index: int) -> tuple[dict[str, object], datet
 
 def evaluate_events(
     events: Iterable[Mapping[str, object]], *, evaluation_time: datetime,
+    min_history: int = 1,
 ) -> list[PipelineResult]:
     """Validate and evaluate a batch, returning summaries sorted by identity.
 
@@ -81,6 +82,10 @@ def evaluate_events(
         raise TypeError("evaluation_time must be a timezone-aware datetime")
     if evaluation_time.tzinfo is None or evaluation_time.utcoffset() is None:
         raise ValueError("evaluation_time must be timezone-aware")
+    if type(min_history) is not int:
+        raise TypeError("min_history must be an integer")
+    if min_history < 1:
+        raise ValueError("min_history must be at least 1")
     now = evaluation_time.astimezone(timezone.utc)
     if isinstance(events, (str, bytes, bytearray, Mapping)):
         raise TypeError("events must be an iterable of v1 event mappings")
@@ -108,21 +113,29 @@ def evaluate_events(
     by_identity: dict[str, list[dict[str, object]]] = {}
     for record, timestamp in unique.values():
         identity = record["user_id"]
-        by_identity.setdefault(identity, []).append({
+        adapted = {
             "identity": identity, "event_type": record["event_type"], "timestamp": timestamp,
-        })
+        }
+        for field in ("device_id", "ip_address"):
+            if field in record:
+                adapted[field] = record[field]
+        by_identity.setdefault(identity, []).append(adapted)
 
     results: list[PipelineResult] = []
     for identity in sorted(by_identity):
         rule = detect_failed_login_burst(by_identity[identity], identity, now=now)
         signals = [rule["rule_id"]] if rule["triggered"] else []
+        novelty = detect_unfamiliar_login_signals(
+            by_identity[identity], identity, now=now, min_history=min_history,
+        )
+        signals.extend(novelty["triggered_signals"])
         scored = score_risk(signals)
         results.append({
             "identity": identity,
             "triggered_signals": scored["triggered_signals"],
             "risk_score": scored["risk_score"],
             "severity": scored["severity"],
-            "explanations": [rule["reason"], *scored["reasons"]],
+            "explanations": [rule["reason"], *novelty["explanations"], *scored["reasons"]],
             "failed_attempts": rule["failed_attempts"],
             "scorer_version": scored["scorer_version"],
         })

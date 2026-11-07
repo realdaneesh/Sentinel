@@ -130,8 +130,7 @@ def test_simulator_burst_and_other_scenarios():
     result = evaluate_events(burst, evaluation_time=NOW)[0]
     assert result["failed_attempts"] == 5
     assert result["risk_score"] == score_risk(["failed_login_burst"])["risk_score"]
-    for scenario in ("normal_activity", "unfamiliar_device", "unfamiliar_ip"):
-        results = evaluate_events(
-            generate_events(scenario, seed=42, reference_time=NOW), evaluation_time=NOW
-        )
-        assert all(item["triggered_signals"] == [] for item in results)
+    results = evaluate_events(
+        generate_events("normal_activity", seed=42, reference_time=NOW), evaluation_time=NOW
+    )
+    assert all(item["triggered_signals"] == [] for item in results)
