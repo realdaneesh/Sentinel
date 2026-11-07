@@ -66,3 +66,7 @@ indicator, not evidence of malicious activity. Device IDs can be absent, rotated
 or unreliable, and IPs can change because of normal networks, proxies, or shared
 addresses. The score is heuristic and the identity summary does not identify an
 individual malicious event.
+
+For offline correlation of a failed-login burst with a specific later unfamiliar
+success, see [INCIDENT_CORRELATION.md](INCIDENT_CORRELATION.md). That engine uses a
+separate event-level novelty helper and leaves this summary output unchanged.

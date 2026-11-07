@@ -69,24 +69,10 @@ def _validate_event(event: object, index: int) -> tuple[dict[str, object], datet
     return record, timestamp.astimezone(timezone.utc)
 
 
-def evaluate_events(
-    events: Iterable[Mapping[str, object]], *, evaluation_time: datetime,
-    min_history: int = 1,
-) -> list[PipelineResult]:
-    """Validate and evaluate a batch, returning summaries sorted by identity.
-
-    Identical event IDs are counted once. An ID reused with different validated
-    content raises ValueError. All events are validated before any result returns.
-    """
-    if not isinstance(evaluation_time, datetime):
-        raise TypeError("evaluation_time must be a timezone-aware datetime")
-    if evaluation_time.tzinfo is None or evaluation_time.utcoffset() is None:
-        raise ValueError("evaluation_time must be timezone-aware")
-    if type(min_history) is not int:
-        raise TypeError("min_history must be an integer")
-    if min_history < 1:
-        raise ValueError("min_history must be at least 1")
-    now = evaluation_time.astimezone(timezone.utc)
+def _unique_events(
+    events: Iterable[Mapping[str, object]],
+) -> dict[str, tuple[dict[str, object], datetime]]:
+    """Validate v1 records and reject conflicting IDs before any detection."""
     if isinstance(events, (str, bytes, bytearray, Mapping)):
         raise TypeError("events must be an iterable of v1 event mappings")
     try:
@@ -109,6 +95,28 @@ def evaluate_events(
                 raise ValueError(f"events[{index}] conflicting event_id: {event_id}")
             continue
         unique[event_id] = record, timestamp
+    return unique
+
+
+def evaluate_events(
+    events: Iterable[Mapping[str, object]], *, evaluation_time: datetime,
+    min_history: int = 1,
+) -> list[PipelineResult]:
+    """Validate and evaluate a batch, returning summaries sorted by identity.
+
+    Identical event IDs are counted once. An ID reused with different validated
+    content raises ValueError. All events are validated before any result returns.
+    """
+    if not isinstance(evaluation_time, datetime):
+        raise TypeError("evaluation_time must be a timezone-aware datetime")
+    if evaluation_time.tzinfo is None or evaluation_time.utcoffset() is None:
+        raise ValueError("evaluation_time must be timezone-aware")
+    if type(min_history) is not int:
+        raise TypeError("min_history must be an integer")
+    if min_history < 1:
+        raise ValueError("min_history must be at least 1")
+    now = evaluation_time.astimezone(timezone.utc)
+    unique = _unique_events(events)
 
     by_identity: dict[str, list[dict[str, object]]] = {}
     for record, timestamp in unique.values():
