@@ -8,9 +8,9 @@ no I/O, detection, clock reads, or persistence and adds no dependencies.
 | Signal | Default points | Producer status |
 | --- | --- | --- |
 | `failed_login_burst` | 35 | Existing rule; orchestration must check `triggered` |
-| `unfamiliar_device` | 20 | Future detector |
+| `unfamiliar_device` | 20 | Offline pipeline detector |
 | `unusual_login_hour` | 15 | Future detector |
-| `unfamiliar_ip` | 20 | Future detector |
+| `unfamiliar_ip` | 20 | Offline pipeline detector |
 
 ```python
 from services.detection.risk_scoring import score_risk
@@ -89,8 +89,9 @@ explanation to envelope reasons. The existing rule remains unchanged.
 No ingestion adapter or result orchestration is implemented here. API
 `detection_result` remains null until orchestration exists; pending scoring uses
 null/UNKNOWN, not an empty-input score. See [API_CONTRACTS.md](API_CONTRACTS.md).
-Only the failed-login burst producer currently exists. The other accepted names
-reserve inputs for future detectors and do not imply those checks ran.
+The offline pipeline produces failed-login burst, unfamiliar-device, and
+unfamiliar-IP signals. `unusual_login_hour` remains reserved for a future
+detector; accepting its name in the scorer does not imply that check ran.
 
 These additive weights are an explicit heuristic, not a calibrated probability
 or an ML model. Scores do not account for signal correlations, frequency beyond

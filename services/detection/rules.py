@@ -2,6 +2,7 @@
 
 from collections.abc import Iterable, Mapping
 from datetime import datetime, timedelta, timezone
+import ipaddress
 from typing import TypedDict
 
 
@@ -15,6 +16,11 @@ class RuleResult(TypedDict):
     triggered: bool
     failed_attempts: int
     reason: str
+
+
+class NoveltyResult(TypedDict):
+    triggered_signals: list[str]
+    explanations: list[str]
 
 
 def _as_utc(timestamp: datetime) -> datetime:
@@ -63,3 +69,62 @@ def detect_failed_login_burst(
             f"{'met' if triggered else 'not met'}."
         ),
     }
+
+
+def detect_unfamiliar_login_signals(
+    events: Iterable[Mapping[str, object]],
+    identity: str,
+    *,
+    now: datetime,
+    min_history: int = 1,
+) -> NoveltyResult:
+    """Compare the latest successful-login cohort with strictly earlier successes.
+
+    The caller supplies unique, validated records with aware datetime timestamps.
+    Each optional identifier needs ``min_history`` earlier successes containing
+    that identifier. Events at the latest timestamp cannot establish its baseline.
+    """
+    if not isinstance(identity, str) or not identity.strip():
+        raise ValueError("identity must be a non-empty string")
+    if type(min_history) is not int:
+        raise TypeError("min_history must be an integer")
+    if min_history < 1:
+        raise ValueError("min_history must be at least 1")
+    evaluation_time = _as_utc(now)
+    successes = [
+        (event, timestamp)
+        for event in events
+        if event.get("identity") == identity
+        and event.get("event_type") == "LOGIN_SUCCESS"
+        and (timestamp := _as_utc(event["timestamp"])) <= evaluation_time
+    ]
+    if not successes:
+        return {"triggered_signals": [], "explanations": []}
+
+    latest = max(timestamp for _, timestamp in successes)
+    current = [event for event, timestamp in successes if timestamp == latest]
+    history = [event for event, timestamp in successes if timestamp < latest]
+    signals: list[str] = []
+    explanations: list[str] = []
+    for field, signal in (("device_id", "unfamiliar_device"),
+                          ("ip_address", "unfamiliar_ip")):
+        prior = [event[field] for event in history if field in event]
+        if len(prior) < min_history:
+            continue
+        if field == "ip_address":
+            known = {ipaddress.ip_address(value) for value in prior}
+            novel = sum(
+                ipaddress.ip_address(event[field]) not in known
+                for event in current if field in event
+            )
+        else:
+            known = set(prior)
+            novel = sum(event[field] not in known for event in current if field in event)
+        if novel:
+            signals.append(signal)
+            explanations.append(
+                f"{signal}: {novel} of {len(current)} latest successful login(s) "
+                f"used a {field} unseen in {len(prior)} earlier successful "
+                f"login(s) for identity {identity!r}."
+            )
+    return {"triggered_signals": signals, "explanations": explanations}

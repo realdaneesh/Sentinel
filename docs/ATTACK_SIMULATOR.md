@@ -32,9 +32,11 @@ wire field. Keep the selected scenario and command alongside exported fixtures
 when interpreting them later. The export contains only authentication events,
 with no scenario labels, baseline IDs, signals, scores, or result envelopes.
 
-Unfamiliar-device and unfamiliar-IP detection is not implemented. These scenarios
-illustrate a change relative to a synthetic baseline; they do not establish that
-an actual detector triggered or supply signals to the risk scorer.
+The offline detector in `services/detection/pipeline.py` recognizes each pair
+with its default one-login baseline requirement when evaluated at the reference
+time. Raising `min_history` above one makes these two-event scenarios
+insufficient to trigger novelty. The exported records themselves contain no
+signals or scores; a first-seen identifier does not establish malicious activity.
 
 ## CLI usage
 
