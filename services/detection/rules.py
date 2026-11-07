@@ -84,12 +84,7 @@ def detect_unfamiliar_login_signals(
     Each optional identifier needs ``min_history`` earlier successes containing
     that identifier. Events at the latest timestamp cannot establish its baseline.
     """
-    if not isinstance(identity, str) or not identity.strip():
-        raise ValueError("identity must be a non-empty string")
-    if type(min_history) is not int:
-        raise TypeError("min_history must be an integer")
-    if min_history < 1:
-        raise ValueError("min_history must be at least 1")
+    _validate_novelty_inputs(identity, min_history)
     evaluation_time = _as_utc(now)
     successes = [
         (event, timestamp)
@@ -104,6 +99,58 @@ def detect_unfamiliar_login_signals(
     latest = max(timestamp for _, timestamp in successes)
     current = [event for event, timestamp in successes if timestamp == latest]
     history = [event for event, timestamp in successes if timestamp < latest]
+    return _compare_identifiers(current, history, identity, min_history)
+
+
+def detect_unfamiliar_login_event(
+    events: Iterable[Mapping[str, object]],
+    current_event: Mapping[str, object],
+    identity: str,
+    *,
+    now: datetime,
+    min_history: int = 1,
+) -> NoveltyResult:
+    """Evaluate one successful login against strictly earlier same-identity successes.
+
+    ``events`` and ``current_event`` are unique, validated adapted records. This
+    helper leaves the latest-login identity summary rule unchanged. Same-time
+    successes cannot establish one another's baseline.
+    """
+    _validate_novelty_inputs(identity, min_history)
+    evaluation_time = _as_utc(now)
+    if current_event.get("identity") != identity or current_event.get("event_type") != "LOGIN_SUCCESS":
+        raise ValueError("current_event must be a successful login for identity")
+    current_time = _as_utc(current_event["timestamp"])
+    if current_time > evaluation_time:
+        return {"triggered_signals": [], "explanations": []}
+    history = [
+        event for event in events
+        if event.get("identity") == identity
+        and event.get("event_type") == "LOGIN_SUCCESS"
+        and _as_utc(event["timestamp"]) < current_time
+    ]
+    return _compare_identifiers(
+        [current_event], history, identity, min_history, current_label="evaluated",
+    )
+
+
+def _validate_novelty_inputs(identity: str, min_history: int) -> None:
+    if not isinstance(identity, str) or not identity.strip():
+        raise ValueError("identity must be a non-empty string")
+    if type(min_history) is not int:
+        raise TypeError("min_history must be an integer")
+    if min_history < 1:
+        raise ValueError("min_history must be at least 1")
+
+
+def _compare_identifiers(
+    current: list[Mapping[str, object]],
+    history: list[Mapping[str, object]],
+    identity: str,
+    min_history: int,
+    *,
+    current_label: str = "latest",
+) -> NoveltyResult:
     signals: list[str] = []
     explanations: list[str] = []
     for field, signal in (("device_id", "unfamiliar_device"),
@@ -123,7 +170,7 @@ def detect_unfamiliar_login_signals(
         if novel:
             signals.append(signal)
             explanations.append(
-                f"{signal}: {novel} of {len(current)} latest successful login(s) "
+                f"{signal}: {novel} of {len(current)} {current_label} successful login(s) "
                 f"used a {field} unseen in {len(prior)} earlier successful "
                 f"login(s) for identity {identity!r}."
             )

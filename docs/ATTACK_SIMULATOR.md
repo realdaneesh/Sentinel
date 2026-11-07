@@ -37,6 +37,10 @@ with its default one-login baseline requirement when evaluated at the reference
 time. Raising `min_history` above one makes these two-event scenarios
 insufficient to trigger novelty. The exported records themselves contain no
 signals or scores; a first-seen identifier does not establish malicious activity.
+An unfamiliar scenario alone contains no failed-login burst and therefore creates
+no correlated incident. To exercise correlation, combine a burst fixture with
+an unfamiliar fixture for the same synthetic identity and compatible timestamps;
+see [INCIDENT_CORRELATION.md](INCIDENT_CORRELATION.md).
 
 ## CLI usage
 
