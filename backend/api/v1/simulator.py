@@ -59,7 +59,7 @@ def generate_synthetic_events(
     if request.ingest:
         for evt in raw_events:
             payload = EventIngestPayload.model_validate(evt)
-            ingest_event(db, payload)
+            ingest_event(db, payload, run_detection=True)
 
     return SimulatorGenerateResponse(
         scenario=request.scenario,

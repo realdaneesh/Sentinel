@@ -136,14 +136,14 @@ async def post_event(
         )
 
     try:
-        status_code, result_status = ingest_event(db, payload)
+        status_code, result_status, detection_result = ingest_event(db, payload, run_detection=True)
         return JSONResponse(
             status_code=status_code,
             content={
                 "schema_version": "1.0",
                 "event_id": payload.event_id,
                 "status": result_status,
-                "detection_result": None,
+                "detection_result": detection_result,
             },
         )
     except EventConflictError:
@@ -234,14 +234,14 @@ async def post_login_event(
         )
 
     try:
-        status_code, result_status = ingest_event(db, payload)
+        status_code, result_status, detection_result = ingest_event(db, payload, run_detection=True)
         return JSONResponse(
             status_code=status_code,
             content={
                 "schema_version": "1.0",
                 "event_id": payload.event_id,
                 "status": result_status,
-                "detection_result": None,
+                "detection_result": detection_result,
             },
         )
     except EventConflictError:

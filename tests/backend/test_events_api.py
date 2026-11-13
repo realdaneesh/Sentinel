@@ -61,7 +61,9 @@ class TestEventIngestionContract:
         assert data["schema_version"] == "1.0"
         assert data["event_id"] == "evt-ingest-001"
         assert data["status"] == "accepted"
-        assert data["detection_result"] is None
+        assert data["detection_result"] is not None
+        assert data["detection_result"]["schema_version"] == "1.0"
+        assert data["detection_result"]["detector_version"] == "1.0.0"
 
     def test_post_event_root_endpoint_compatibility(self, client_with_db):
         """Test that /events directly at root works according to docs/API_CONTRACTS.md."""

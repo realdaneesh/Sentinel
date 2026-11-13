@@ -1,11 +1,13 @@
-"""Service layer for authentication event ingestion, deduplication, and querying."""
+"""Service layer for authentication event ingestion, deduplication, detection, and querying."""
 
 from datetime import datetime
+from typing import Any
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ..models.event import LoginEvent
 from ..schemas.event import EventIngestPayload
+from .detection_adapter import process_event_detection
 
 
 class EventConflictError(Exception):
@@ -15,14 +17,18 @@ class EventConflictError(Exception):
         super().__init__(f"event_id already exists with different content: {event_id}")
 
 
-def ingest_event(db: Session, payload: EventIngestPayload) -> tuple[int, str]:
-    """Ingest a validated authentication event atomically.
+def ingest_event(
+    db: Session,
+    payload: EventIngestPayload,
+    run_detection: bool = True,
+) -> tuple[int, str, dict[str, Any] | None]:
+    """Ingest a validated authentication event atomically and trigger detection orchestration.
 
     Returns:
-        (201, "accepted") if newly persisted.
-        (200, "duplicate") if an exact identical replay was received.
+        (201, "accepted", detection_result) if newly persisted.
+        (200, "duplicate", detection_result) if an exact identical replay was received.
     Raises:
-        EventConflictError (to be mapped to 409 Conflict) if event_id exists with different payload.
+        EventConflictError (mapped to 409 Conflict) if event_id exists with different payload.
     """
     payload_hash = payload.canonical_hash()
 
@@ -33,7 +39,7 @@ def ingest_event(db: Session, payload: EventIngestPayload) -> tuple[int, str]:
 
     if existing is not None:
         if existing.payload_hash == payload_hash:
-            return 200, "duplicate"
+            return 200, "duplicate", existing.detection_result
         else:
             raise EventConflictError(payload.event_id)
 
@@ -54,7 +60,12 @@ def ingest_event(db: Session, payload: EventIngestPayload) -> tuple[int, str]:
     db.add(new_event)
     db.commit()
     db.refresh(new_event)
-    return 201, "accepted"
+
+    detection_result = None
+    if run_detection:
+        detection_result = process_event_detection(db, new_event)
+
+    return 201, "accepted", detection_result
 
 
 def get_event_by_id(db: Session, event_id: str) -> LoginEvent | None:
@@ -91,13 +102,10 @@ def list_events(
     if source:
         query = query.where(LoginEvent.source == source)
 
-    # Total count query
     count_query = select(func.count()).select_from(query.subquery())
     total = db.execute(count_query).scalar_one()
 
-    # Paginated ordered query
     ordered_query = query.order_by(LoginEvent.timestamp.desc(), LoginEvent.event_id).offset(offset).limit(limit)
     items = list(db.execute(ordered_query).scalars().all())
 
     return total, items
-
