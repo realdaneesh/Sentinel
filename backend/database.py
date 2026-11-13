@@ -61,3 +61,4 @@ def drop_db(engine_instance=None) -> None:
     """Drop all tables (useful for tests)."""
     target_engine = engine_instance or engine
     Base.metadata.drop_all(bind=target_engine)
+

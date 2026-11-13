@@ -74,3 +74,4 @@ class Alert(Base):
 
     def __repr__(self) -> str:
         return f"<Alert id={self.alert_id!r} type={self.alert_type!r} severity={self.severity!r} ack={self.is_acknowledged}>"
+

@@ -286,3 +286,4 @@ class TestAuditLogModel:
         assert retrieved.action == "ACKNOWLEDGE_ALERT"
         assert retrieved.resource_type == "alert"
         assert retrieved.details["comment"].startswith("Investigated")
+

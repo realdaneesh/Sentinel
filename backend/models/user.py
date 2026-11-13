@@ -57,3 +57,4 @@ class User(Base):
 
     def __repr__(self) -> str:
         return f"<User username={self.username!r} role={self.role!r} status={self.account_status!r}>"
+

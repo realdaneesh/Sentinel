@@ -98,3 +98,4 @@ class LoginEvent(Base):
 
     def __repr__(self) -> str:
         return f"<LoginEvent event_id={self.event_id!r} user_id={self.user_id!r} type={self.event_type!r}>"
+

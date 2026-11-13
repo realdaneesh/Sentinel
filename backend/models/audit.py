@@ -54,3 +54,4 @@ class AuditLog(Base):
 
     def __repr__(self) -> str:
         return f"<AuditLog actor={self.actor!r} action={self.action!r} resource={self.resource_type}:{self.resource_id}>"
+

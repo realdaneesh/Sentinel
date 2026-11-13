@@ -112,3 +112,4 @@ class Incident(Base):
 
     def __repr__(self) -> str:
         return f"<Incident id={self.incident_id!r} user={self.user_id!r} score={self.risk_score} severity={self.severity!r}>"
+
