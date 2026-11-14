@@ -99,5 +99,16 @@ def patch_alert(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Alert not found: {alert_id}",
         )
+
+    from ...services.audit_service import record_audit_log
+    record_audit_log(
+        db,
+        actor=current_user.username,
+        action="ACKNOWLEDGE_ALERT",
+        resource_type="alert",
+        resource_id=alert_id,
+        details={"acknowledged_by": updated.acknowledged_by},
+    )
+
     return AlertDetailResponse.model_validate(updated)
 

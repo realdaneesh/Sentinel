@@ -38,3 +38,4 @@ class UserResponse(BaseModel):
     role: UserRole
     account_status: AccountStatus
     created_at: datetime
+

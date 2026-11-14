@@ -103,5 +103,16 @@ def patch_incident(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Incident not found: {incident_id}",
         )
+
+    from ...services.audit_service import record_audit_log
+    record_audit_log(
+        db,
+        actor=current_user.username,
+        action="UPDATE_INCIDENT_STATUS",
+        resource_type="incident",
+        resource_id=incident_id,
+        details={"status": payload.status, "description": payload.description},
+    )
+
     return IncidentDetailResponse.model_validate(updated)
 

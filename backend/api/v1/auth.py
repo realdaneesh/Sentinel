@@ -42,6 +42,15 @@ def register(
             email=payload.email,
             role=payload.role,
         )
+        from ...services.audit_service import record_audit_log
+        record_audit_log(
+            db,
+            actor="system/registration",
+            action="REGISTER_USER",
+            resource_type="user",
+            resource_id=user.id,
+            details={"username": user.username, "role": user.role},
+        )
         return UserResponse.model_validate(user)
     except IntegrityError:
         db.rollback()
@@ -103,3 +112,4 @@ def list_users(
     """List all registered users (Administrator only)."""
     users = list(db.execute(select(User).order_by(User.created_at.desc())).scalars().all())
     return [UserResponse.model_validate(u) for u in users]
+

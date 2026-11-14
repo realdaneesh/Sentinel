@@ -242,3 +242,4 @@ class TestRoleBasedAccessControl:
         assert client.get("/api/v1/alerts").status_code == 401
         assert client.get("/api/v1/events").status_code == 401
         assert client.patch("/api/v1/incidents/inc-rbac-test", json={"status": "resolved"}).status_code == 401
+
