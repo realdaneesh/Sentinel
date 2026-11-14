@@ -315,3 +315,4 @@ class TestEndToEndSystemScenarios:
         print(f"\n[PERFORMANCE] {count} events processed in {elapsed:.3f}s: {avg_per_event:.2f}ms/event ({throughput:.1f} events/sec)")
         # Performance assertion: average response time must be under 50ms per event in memory
         assert avg_per_event < 50.0
+

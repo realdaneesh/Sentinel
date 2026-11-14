@@ -215,3 +215,4 @@ Benchmarked using 30 rapid sequential event ingestion requests with in-memory SQ
 
 1. **In-Process Synchronous Detection:** Currently, detection runs synchronously during event ingestion. For high-volume multi-tenant production systems exceeding thousands of events per second, an asynchronous message queue (e.g. RabbitMQ or Redis Streams) with an ordered worker consumer is recommended.
 2. **Behavioral Baseline Longevity:** Novelty detection evaluates all historical successes for that user. In massive production databases with millions of rows per user, a rolling baseline summary table (e.g. `user_known_devices` and `user_known_ips`) would further optimize query overhead.
+

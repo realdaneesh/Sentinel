@@ -92,3 +92,4 @@ The detection engine is pure, deterministic, and memory-only. The backend adapte
 - **Detection Failures:** Any unhandled exception during detection sets `event.detection_status = "failed"` without rolling back or deleting the accepted event.
 - **Auditability:** Detection envelopes store `detector_version: "1.0.0"` and `scorer_version: "1.0.0"`.
 - **Chronological Ordering:** Historical context queries are ordered by `(timestamp, event_id)` to ensure deterministic evaluation.
+
