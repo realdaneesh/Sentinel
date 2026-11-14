@@ -198,21 +198,16 @@ def process_event_detection(db: Session, event: LoginEvent) -> dict[str, Any]:
                 new_inc.events.extend(contrib_evts)
                 db.add(new_inc)
 
-                # Auto-generate alert if HIGH or CRITICAL
+                # Auto-generate alert if HIGH or CRITICAL using alert_service with deduplication
                 if new_inc.severity in ("HIGH", "CRITICAL"):
-                    alert = Alert(
-                        alert_id=f"alt-{uuid4().hex[:16]}",
-                        incident_id=new_inc.incident_id,
-                        alert_type="THREAT_INCIDENT_CORRELATED",
-                        severity=new_inc.severity,
-                        message=f"Threat detected for {new_inc.user_id}: {title} (Risk: {new_inc.risk_score})",
-                    )
-                    db.add(alert)
+                    from .alert_service import create_alert_for_incident
+                    alert = create_alert_for_incident(db, new_inc)
                     logger.warning(
-                        "Alert generated for incident %s (User: %s, Score: %d)",
+                        "Alert generated for incident %s (User: %s, Score: %d, Alert: %s)",
                         new_inc.incident_id,
                         new_inc.user_id,
                         new_inc.risk_score,
+                        alert.alert_id,
                     )
 
         # 6. Mark event as evaluated and store detection result
