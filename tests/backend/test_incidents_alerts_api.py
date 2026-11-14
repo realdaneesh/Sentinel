@@ -12,6 +12,8 @@ from backend.main import app
 from backend.models.alert import Alert
 from backend.models.event import LoginEvent
 from backend.models.incident import Incident
+from backend.models.user import User
+from backend.security.dependencies import get_current_user
 from backend.services.alert_service import create_alert_for_incident
 
 
@@ -38,6 +40,13 @@ def client_and_db():
             db.close()
 
     app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[get_current_user] = lambda: User(
+        id="usr-analyst-test",
+        username="analyst_tester",
+        role="analyst",
+        account_status="active",
+        password_hash="fakehash",
+    )
 
     now = datetime(2026, 11, 14, 10, 0, tzinfo=timezone.utc)
     with TestingSessionLocal() as session:

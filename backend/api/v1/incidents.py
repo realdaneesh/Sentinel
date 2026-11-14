@@ -5,12 +5,14 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from ...database import get_db
+from ...models.user import User
 from ...schemas.incident import (
     IncidentDetailResponse,
     IncidentResponse,
     IncidentUpdate,
     PaginatedIncidentListResponse,
 )
+from ...security.dependencies import get_current_user, require_role
 from ...services.incident_service import (
     get_incident_by_id,
     list_incidents,
@@ -23,6 +25,7 @@ router = APIRouter(prefix="/incidents", tags=["Incidents"])
 @router.get(
     "",
     response_model=PaginatedIncidentListResponse,
+    dependencies=[Depends(require_role(["viewer", "analyst"]))],
 )
 def get_incidents(
     user_id: str | None = Query(None, description="Filter incidents by associated user identity"),
@@ -60,6 +63,7 @@ def get_incidents(
 @router.get(
     "/{incident_id}",
     response_model=IncidentDetailResponse,
+    dependencies=[Depends(require_role(["viewer", "analyst"]))],
     responses={404: {"description": "Incident not found"}},
 )
 def get_incident(
@@ -84,9 +88,10 @@ def get_incident(
 def patch_incident(
     incident_id: str,
     payload: IncidentUpdate,
+    current_user: User = Depends(require_role(["analyst"])),
     db: Session = Depends(get_db),
 ) -> IncidentDetailResponse:
-    """Update incident investigation status (open, investigating, resolved, false_positive)."""
+    """Update incident investigation status (restricted to Analyst and Administrator)."""
     updated = update_incident(
         db,
         incident_id,
@@ -99,3 +104,4 @@ def patch_incident(
             detail=f"Incident not found: {incident_id}",
         )
     return IncidentDetailResponse.model_validate(updated)
+

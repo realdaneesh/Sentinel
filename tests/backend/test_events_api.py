@@ -9,6 +9,8 @@ from sqlalchemy.pool import StaticPool
 
 from backend.database import Base, get_db
 from backend.main import app
+from backend.models.user import User
+from backend.security.dependencies import get_current_user
 
 
 @pytest.fixture
@@ -34,6 +36,13 @@ def client_with_db():
             db.close()
 
     app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[get_current_user] = lambda: User(
+        id="usr-admin-test",
+        username="admin_tester",
+        role="admin",
+        account_status="active",
+        password_hash="fakehash",
+    )
     with TestClient(app) as test_client:
         yield test_client
 

@@ -10,6 +10,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 from ...database import get_db
+from ...models.user import User
 from ...schemas.event import (
     ErrorBody,
     ErrorDetail,
@@ -19,6 +20,7 @@ from ...schemas.event import (
     LoginEventResponse,
     PaginatedEventListResponse,
 )
+from ...security.dependencies import require_role
 from ...services.event_service import (
     EventConflictError,
     get_event_by_id,
@@ -260,6 +262,7 @@ async def post_login_event(
 @router.get(
     "/events",
     response_model=PaginatedEventListResponse,
+    dependencies=[Depends(require_role(["viewer", "analyst"]))],
 )
 def get_events(
     user_id: str | None = Query(None, description="Filter by user identity"),
@@ -295,6 +298,7 @@ def get_events(
 @router.get(
     "/events/{event_id}",
     response_model=LoginEventResponse,
+    dependencies=[Depends(require_role(["viewer", "analyst"]))],
     responses={404: {"model": ErrorResponse, "description": "Event not found"}},
 )
 def get_event(

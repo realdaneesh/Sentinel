@@ -45,3 +45,4 @@ class PaginatedIncidentListResponse(BaseModel):
     limit: int
     offset: int
     items: list[IncidentResponse]
+

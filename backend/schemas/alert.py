@@ -39,3 +39,4 @@ class PaginatedAlertListResponse(BaseModel):
     limit: int
     offset: int
     items: list[AlertResponse]
+

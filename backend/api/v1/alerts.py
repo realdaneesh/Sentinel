@@ -4,12 +4,14 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from ...database import get_db
+from ...models.user import User
 from ...schemas.alert import (
     AlertDetailResponse,
     AlertResponse,
     AlertUpdate,
     PaginatedAlertListResponse,
 )
+from ...security.dependencies import get_current_user, require_role
 from ...services.alert_service import (
     acknowledge_alert,
     get_alert_by_id,
@@ -22,6 +24,7 @@ router = APIRouter(prefix="/alerts", tags=["Alerts"])
 @router.get(
     "",
     response_model=PaginatedAlertListResponse,
+    dependencies=[Depends(require_role(["viewer", "analyst"]))],
 )
 def get_alerts(
     severity: str | None = Query(None, description="Filter by severity: LOW, MEDIUM, HIGH, CRITICAL"),
@@ -51,6 +54,7 @@ def get_alerts(
 @router.get(
     "/{alert_id}",
     response_model=AlertDetailResponse,
+    dependencies=[Depends(require_role(["viewer", "analyst"]))],
     responses={404: {"description": "Alert not found"}},
 )
 def get_alert(
@@ -75,9 +79,10 @@ def get_alert(
 def patch_alert(
     alert_id: str,
     payload: AlertUpdate,
+    current_user: User = Depends(require_role(["analyst"])),
     db: Session = Depends(get_db),
 ) -> AlertDetailResponse:
-    """Acknowledge or update status of an alert."""
+    """Acknowledge or update status of an alert (restricted to Analyst and Administrator)."""
     if not payload.is_acknowledged:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -87,7 +92,7 @@ def patch_alert(
     updated = acknowledge_alert(
         db,
         alert_id,
-        acknowledged_by=payload.acknowledged_by,
+        acknowledged_by=payload.acknowledged_by or current_user.username,
     )
     if updated is None:
         raise HTTPException(
@@ -95,3 +100,4 @@ def patch_alert(
             detail=f"Alert not found: {alert_id}",
         )
     return AlertDetailResponse.model_validate(updated)
+

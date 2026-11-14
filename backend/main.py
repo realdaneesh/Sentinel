@@ -5,7 +5,7 @@ from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from .api.v1 import alerts, events, incidents, simulator
+from .api.v1 import alerts, auth, events, incidents, simulator
 from .config import settings
 from .database import init_db
 from .logging import logger
@@ -47,6 +47,7 @@ def health_check():
 
 
 # Mount routers under /api/v1
+app.include_router(auth.router, prefix=settings.API_V1_PREFIX)
 app.include_router(events.router, prefix=settings.API_V1_PREFIX)
 app.include_router(incidents.router, prefix=settings.API_V1_PREFIX)
 app.include_router(alerts.router, prefix=settings.API_V1_PREFIX)
