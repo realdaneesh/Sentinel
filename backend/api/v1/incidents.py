@@ -37,6 +37,7 @@ def get_incidents(
     end_time: datetime | None = Query(None, description="Filter incidents ending on or before timestamp"),
     limit: int = Query(50, ge=1, le=200, description="Page limit"),
     offset: int = Query(0, ge=0, description="Page offset"),
+    include_historical: bool = Query(False, description="Include superseded or unsupported incidents"),
     db: Session = Depends(get_db),
 ) -> PaginatedIncidentListResponse:
     """Retrieve security incidents with comprehensive filtering and pagination."""
@@ -51,6 +52,7 @@ def get_incidents(
         end_time=end_time,
         limit=limit,
         offset=offset,
+        include_historical=include_historical,
     )
     return PaginatedIncidentListResponse(
         total=total,

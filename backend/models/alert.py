@@ -42,6 +42,7 @@ class Alert(Base):
         nullable=False,
         index=True,
     )
+    is_current: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False, index=True)
     acknowledged_by: Mapped[str | None] = mapped_column(
         String(256),
         nullable=True,

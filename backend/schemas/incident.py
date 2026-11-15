@@ -15,6 +15,11 @@ class IncidentResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     incident_id: str
+    evidence_fingerprint: str | None = None
+    is_current: bool = True
+    superseded_by_id: str | None = None
+    split_from_id: str | None = None
+    evidence_history: list[dict] = Field(default_factory=list)
     title: str
     description: str | None = None
     user_id: str

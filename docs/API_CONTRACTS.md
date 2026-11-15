@@ -16,6 +16,17 @@ another `source` returns 403. Neither condition persists an event or runs detect
 See [SECURITY.md](SECURITY.md) for provisioning, rotation, and revocation. The v1
 event JSON and authorized replay/conflict behavior are unchanged.
 
+## Processing changes in Task 008C
+
+Task 008C accepts future-dated v1 events but leaves them with
+`detection_result: null` and persisted `detection_status: pending` until a later
+explicit processing time. Authorized ingestion of late events reevaluates the
+affected exact identity. The local `reevaluate-due` command can advance pending
+events without an HTTP endpoint. Incident and alert list endpoints now default to
+current records and accept `include_historical=true`; detail endpoints can still
+retrieve historical records by ID. These are backend orchestration changes, not
+changes to the v1 event payload or replay/conflict keys.
+
 ## POST /events
 
 Accept `Content-Type: application/json` and exactly one authentication event
@@ -29,15 +40,15 @@ For a new event, respond **201 Created** only after durable persistence:
 {"schema_version":"1.0","event_id":"evt-001","status":"accepted","detection_result":null}
 ```
 
-Acceptance means stored, not scored or proven safe. Detection may run later.
-`detection_result` stays null until result orchestration exists; subsequently it
-may hold the envelope specified in EVENT_SCHEMA.md. A rule execution failure after
-storage must not erase the accepted event. Future retry/queue behavior is backend
-work and is not implemented here.
+Acceptance means stored, not scored or proven safe. Eligible events normally
+receive the detection envelope specified in EVENT_SCHEMA.md in this response.
+Future-dated events retain a null result until reevaluation. A rule execution
+failure after storage does not erase the accepted event. Automatic retry or queue
+processing is not implemented.
 
 An identical retry returns **200 OK** with `status: "duplicate"`, the original
-`event_id`, response `schema_version: "1.0"`, and `detection_result: null` until
-orchestration exists. Do not insert a second event or dispatch detection again.
+`event_id`, response `schema_version: "1.0"`, and the currently stored
+`detection_result` (possibly null). Do not insert a second event or dispatch detection again.
 The request body's `event_id` is the idempotency key; no separate
 `Idempotency-Key` header is defined. Enforce this with a database uniqueness
 constraint and atomic conflict handling, including concurrent requests. Duplicate

@@ -21,6 +21,7 @@ def ingest_event(
     db: Session,
     payload: EventIngestPayload,
     run_detection: bool = True,
+    evaluation_time: datetime | None = None,
 ) -> tuple[int, str, dict[str, Any] | None]:
     """Ingest a validated authentication event atomically and trigger detection orchestration.
 
@@ -63,7 +64,7 @@ def ingest_event(
 
     detection_result = None
     if run_detection:
-        detection_result = process_event_detection(db, new_event)
+        detection_result = process_event_detection(db, new_event, evaluation_time=evaluation_time)
 
     return 201, "accepted", detection_result
 

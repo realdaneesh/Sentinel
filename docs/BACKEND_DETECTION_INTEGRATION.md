@@ -32,8 +32,8 @@ revocation. The offline detector is independent of HTTP authentication.
         │
         ▼
 3. Detection Adapter Invocation
-        ├── Query Rolling 15-Min History for Identity
-        ├── Query Historical Success Baselines for Identity
+        ├── Load All Eligible Events for Exact Identity
+        ├── Build Prior-Success Baselines from Full History
         │
         ├── Step 3A: Invoke detect_failed_login_burst(...)
         │
@@ -86,15 +86,66 @@ revocation. The offline detector is independent of HTTP authentication.
 
 ### D. Incident Correlation Engine (`correlate_incidents`)
 - **Source Module:** `services.detection.incident_correlation`
-- **Input:** Wire-format v1 event mappings for the identity within the recent evaluation window.
-- **Output:** List of `Incident` records with SHA-256 deterministic IDs, contributing event IDs, risk scores, and combined explanations.
-- **Persistence:** Saved to `incidents` table and linked through `incident_events` junction table.
+- **Input:** Wire-format v1 event mappings for the identity across all eligible history.
+- **Output:** Offline incident mappings with evidence-dependent SHA-256 fingerprints, contributing event IDs, risk scores, and combined explanations.
+- **Persistence:** Matched to stable database incidents, linked through `incident_events`, and recorded as `evidence_fingerprint`.
 
 ---
 
 ## 4. Error Handling & Reliability
 
-- **Detection Failures:** Any unhandled exception during detection sets `event.detection_status = "failed"` without rolling back or deleting the accepted event.
-- **Auditability:** Detection envelopes store `detector_version: "1.0.0"` and `scorer_version: "1.0.0"`.
-- **Chronological Ordering:** Historical context queries are ordered by `(timestamp, event_id)` to ensure deterministic evaluation.
+- **Detection Failures:** An unhandled detection exception marks the accepted event as failed.
+- **Auditability:** Detection envelopes store the configured detector version and scorer reasons.
+- **Chronological Ordering:** Historical events are ordered by `(timestamp, event_id)`.
+
+## 5. Task 008C persistent reconciliation
+
+`backend.services.detection_adapter.reconcile_identity(db, user_id,
+evaluation_time=aware_utc_datetime)` recomputes every event at or before that
+processing-time reference for one exact, case-sensitive identity. It uses all
+earlier successful logins for novelty baselines, without a 60-minute cutoff;
+burst windows remain inclusive 15-minute windows. It then invokes the unchanged
+offline `correlate_incidents()` over the full eligible identity history.
+
+The offline `incident_id` is stored as `evidence_fingerprint`. A new database
+incident receives an independent persistent `incident_id`. New offline episodes
+are matched to current incidents of the same identity and type by the number of
+shared contributing event IDs. Pairs are assigned greedily by descending overlap,
+then existing creation time and ID, then fingerprint. No overlap creates a new
+incident; this avoids merging separate episodes solely by identity or time.
+Changes in the first failure, start time, or evidence fingerprint do not force a
+new persistent ID when evidence still overlaps.
+
+A matched incident receives current event links, score, severity, signals,
+explanations, and time range. Its previous fingerprint and evidence snapshot are
+appended to `evidence_history`. Investigation `status`, analyst `description`,
+and existing alert acknowledgement remain unchanged. At most one alert is current
+for an episode; severity and message update on escalation while acknowledgement
+remains intact. Identical replay stops before reevaluation.
+
+On merge, the strongest matching old incident retains its ID; displaced records
+and alerts become historical (`is_current=false`) with `superseded_by_id` pointing
+to the survivor. On split, the strongest matching child keeps the old ID; other
+children get new IDs and `split_from_id`. Unmatched old records are marked
+historical, retain analyst state and forensic event links, and remain available
+by ID or with `include_historical=true` in list APIs. Current lists hide them by
+default. A previously unsupported episode is not automatically resurrected as
+the same persistent ID if it later reappears without a current overlap.
+
+Event time is distinct from processing time. A newly accepted event after the
+processing reference remains `pending` with a null result and cannot trigger an
+incident or alert. `python -m backend.manage reevaluate-due --at <aware ISO time>`
+is a local management command to process due events deterministically; omitting
+`--at` uses current UTC time. `--identity` limits work to an exact identity. There
+is no public reevaluation route or background scheduler. Late events trigger a
+full recomputation of their identity at the current processing reference, with
+no fixed reconciliation horizon. Previously eligible event results can change.
+
+This correctness-first approach reads all events for the identity and runs
+per-event windows and full correlation. It can become expensive for long histories
+and should be optimized with proven equivalence tests. The database schema adds
+incident fingerprint, current-state, lineage, and evidence-history columns plus
+an alert current-state column. Existing databases need a reviewed migration and
+backfill; `create_all` does not alter existing tables. Concurrent ingestion and
+transaction failure paths remain Task 008D work; PostgreSQL is unverified.
 

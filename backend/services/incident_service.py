@@ -19,9 +19,12 @@ def list_incidents(
     end_time: datetime | None = None,
     limit: int = 50,
     offset: int = 0,
+    include_historical: bool = False,
 ) -> tuple[int, list[Incident]]:
     """List incidents with filtering and pagination."""
     query = select(Incident)
+    if not include_historical:
+        query = query.where(Incident.is_current.is_(True))
 
     if user_id:
         query = query.where(Incident.user_id == user_id)

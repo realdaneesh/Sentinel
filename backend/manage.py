@@ -3,11 +3,14 @@
 import argparse
 import getpass
 import sys
+from datetime import datetime, timezone
 
 from sqlalchemy import func, select
 
 from .database import SessionLocal, init_db
 from .models.user import User
+from .models.event import LoginEvent
+from .services.detection_adapter import reconcile_identity
 from .services.audit_service import record_audit_log
 from .services.auth_service import create_user
 from .services.producer_service import provision_producer, revoke_producer, rotate_producer
@@ -25,6 +28,9 @@ def main(argv: list[str] | None = None) -> int:
     revoke.add_argument("--id", required=True)
     rotate = commands.add_parser("rotate-producer", help="Replace a producer key")
     rotate.add_argument("--id", required=True)
+    reevaluate = commands.add_parser("reevaluate-due", help="Recompute eligible authentication history")
+    reevaluate.add_argument("--at", help="UTC ISO timestamp; defaults to current UTC time")
+    reevaluate.add_argument("--identity", help="Limit reevaluation to one exact user_id")
     args = parser.parse_args(argv)
 
     init_db()
@@ -56,6 +62,20 @@ def main(argv: list[str] | None = None) -> int:
             if rotated is None:
                 parser.error("Active producer not found")
             print(f"Replacement key (shown once): {rotated[1]}")
+        elif args.command == "reevaluate-due":
+            try:
+                evaluation_time = (datetime.fromisoformat(args.at.replace("Z", "+00:00"))
+                                   if args.at else datetime.now(timezone.utc))
+                if evaluation_time.tzinfo is None or evaluation_time.utcoffset() is None:
+                    raise ValueError("timestamp must include a UTC offset")
+            except ValueError:
+                parser.error("--at must be a timezone-aware ISO timestamp")
+            identities = ([args.identity] if args.identity else sorted(db.scalars(
+                select(LoginEvent.user_id).distinct()
+            ).all()))
+            for identity in identities:
+                reconcile_identity(db, identity, evaluation_time=evaluation_time)
+            print(f"Reevaluated {len(identities)} identity/identities")
     return 0
 
 

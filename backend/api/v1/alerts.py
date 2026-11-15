@@ -32,6 +32,7 @@ def get_alerts(
     incident_id: str | None = Query(None, description="Filter alerts by associated incident"),
     limit: int = Query(50, ge=1, le=200, description="Page limit"),
     offset: int = Query(0, ge=0, description="Page offset"),
+    include_historical: bool = Query(False, description="Include alerts from historical incidents"),
     db: Session = Depends(get_db),
 ) -> PaginatedAlertListResponse:
     """Retrieve security alerts ordered by acknowledgement priority and severity."""
@@ -42,6 +43,7 @@ def get_alerts(
         incident_id=incident_id,
         limit=limit,
         offset=offset,
+        include_historical=include_historical,
     )
     return PaginatedAlertListResponse(
         total=total,

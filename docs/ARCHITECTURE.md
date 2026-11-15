@@ -96,7 +96,7 @@ The relational schema is implemented with SQLAlchemy 2.0 ORM:
    - Compound indexes: `(user_id, timestamp)`, `(user_id, event_type, timestamp)`
 
 3. **`incidents`**:
-   - `incident_id`: Primary key (`inc-...` SHA-256 hash)
+   - `incident_id`: Stable database primary key (`inc-` plus random UUID hex)
    - `title`, `description`: Text
    - `user_id`: String(256), indexed
    - `incident_type`: String(128)
@@ -106,6 +106,8 @@ The relational schema is implemented with SQLAlchemy 2.0 ORM:
    - `start_time`, `end_time`: DateTime (UTC aware)
    - `signals`, `explanations`: JSON arrays
    - `scorer_version`: String(32)
+   - Task 008C: stable `incident_id` distinct from offline `evidence_fingerprint`;
+     `is_current`, `superseded_by_id`, `split_from_id`, and JSON `evidence_history`
    - Relationship: `events` (via `incident_events`), `alerts` (cascade delete)
 
 4. **`incident_events`** (Junction Table):
@@ -118,6 +120,7 @@ The relational schema is implemented with SQLAlchemy 2.0 ORM:
    - `alert_type`, `severity`: String
    - `message`: Text
    - `is_acknowledged`: Boolean, indexed
+   - Task 008C: `is_current` distinguishes active from historical alerts
    - `acknowledged_by`: String, nullable
    - `acknowledged_at`: DateTime, nullable
 
@@ -196,6 +199,12 @@ outside version control. Bootstrap, producer keys, required headers, and simulat
 controls are documented in [SECURITY.md](SECURITY.md). PostgreSQL deployment and
 migrations have not been verified. The example signing-key placeholder is invalid
 until replaced.
+
+Task 008C also adds incident and alert columns. Existing databases require a
+reviewed migration and backfill; only fresh databases are created by `create_all`.
+Use the local `python -m backend.manage reevaluate-due` command for due events.
+Incident and alert list APIs default to current records and support
+`include_historical=true`; details remain retrievable by persistent ID.
 
 ### Running the API Server
 Start the development server with Uvicorn:

@@ -2,7 +2,7 @@
 
 from datetime import datetime
 from typing import Any
-from sqlalchemy import Column, DateTime, ForeignKey, Index, Integer, JSON, String, Table, Text
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Index, Integer, JSON, String, Table, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ..database import Base
@@ -28,6 +28,12 @@ class Incident(Base):
         primary_key=True,
         index=True,
     )
+    # Stable database identity; the offline incident_id is stored separately.
+    evidence_fingerprint: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
+    is_current: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False, index=True)
+    superseded_by_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    split_from_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    evidence_history: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list, nullable=False)
     title: Mapped[str] = mapped_column(
         String(256),
         nullable=False,

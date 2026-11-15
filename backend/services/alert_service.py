@@ -56,9 +56,12 @@ def list_alerts(
     incident_id: str | None = None,
     limit: int = 50,
     offset: int = 0,
+    include_historical: bool = False,
 ) -> tuple[int, list[Alert]]:
     """Query alerts with filtering and pagination."""
     query = select(Alert)
+    if not include_historical:
+        query = query.where(Alert.is_current.is_(True))
 
     if severity:
         query = query.where(Alert.severity == severity.upper())

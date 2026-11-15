@@ -1,5 +1,11 @@
 # Offline incident correlation
 
+> Backend persistence in Task 008C uses the offline `incident_id` as an evidence
+> fingerprint, not as the database incident ID. The offline function and its
+> deterministic output remain unchanged. See
+> [BACKEND_DETECTION_INTEGRATION.md](BACKEND_DETECTION_INTEGRATION.md) for the
+> persistent matching and lifecycle policy.
+
 `services.detection.incident_correlation.correlate_incidents(events, *,
 evaluation_time, correlation_window=timedelta(minutes=15), min_history=1)`
 accepts an in-memory iterable of v1 authentication events and returns a list of

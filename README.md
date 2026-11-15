@@ -61,6 +61,23 @@ $env:DEBUG = 'true'
 - **Alerts (`/api/v1/alerts`):** Prioritized security alerts, acknowledgement workflow (`is_acknowledged`, `acknowledged_by`)
 - **Simulator (`/api/v1/simulator`):** admin-only `/generate`; API persistence also requires explicit development or testing enablement. The offline CLI needs no API credentials.
 
+## Detection reevaluation
+
+Future-dated events are accepted as pending. A local administrator can process
+eligible events at the current UTC time, or supply an explicit aware ISO time for
+deterministic replay:
+
+```powershell
+.\.venv\Scripts\python.exe -m backend.manage reevaluate-due
+.\.venv\Scripts\python.exe -m backend.manage reevaluate-due --at 2026-11-15T12:00:00Z --identity synthetic-user
+```
+
+The command is local and has no HTTP route. Late events automatically recompute
+their exact identity. Incident and alert lists show current records by default;
+`include_historical=true` includes superseded records. Existing databases require
+a reviewed schema migration before running Task 008C code. See
+[backend detection integration](docs/BACKEND_DETECTION_INTEGRATION.md).
+
 ---
 
 ## Documentation Links

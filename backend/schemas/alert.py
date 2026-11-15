@@ -19,6 +19,7 @@ class AlertResponse(BaseModel):
     severity: AlertSeverity
     message: str
     is_acknowledged: bool
+    is_current: bool = True
     acknowledged_by: str | None = None
     acknowledged_at: datetime | None = None
     created_at: datetime
