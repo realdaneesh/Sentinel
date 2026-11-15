@@ -1,0 +1,8 @@
+# Runtime dependencies for Python 3.14. SQLite support is built into Python.
+fastapi==0.162.7
+uvicorn==0.54.0
+SQLAlchemy==2.0.47
+pydantic==2.14.1
+pydantic-settings==2.16.1
+bcrypt==5.0.0
+PyJWT==2.10.1

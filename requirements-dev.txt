@@ -1,0 +1,4 @@
+# Install with: python -m pip install -r requirements-dev.txt -c constraints.lock
+-r requirements.txt
+httpx==0.28.1
+pytest==9.2.0

@@ -1,0 +1,3 @@
+# Optional driver for DATABASE_URL=postgresql+psycopg2://...
+-r requirements.txt
+psycopg2-binary==2.9.13
