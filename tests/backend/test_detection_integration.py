@@ -12,6 +12,7 @@ from backend.main import app
 from backend.models.alert import Alert
 from backend.models.event import LoginEvent
 from backend.models.incident import Incident
+from backend.services.producer_service import provision_producer
 
 
 @pytest.fixture
@@ -37,7 +38,10 @@ def client_and_session():
             db.close()
 
     app.dependency_overrides[get_db] = override_get_db
+    with TestingSessionLocal() as session:
+        _, producer_key = provision_producer(session, name="test-detection-producer", source="*")
     with TestClient(app) as test_client:
+        test_client.headers.update({"X-Sentinel-Producer-Key": producer_key})
         yield test_client, TestingSessionLocal
 
     app.dependency_overrides.clear()

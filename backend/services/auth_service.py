@@ -43,7 +43,12 @@ def create_access_token(
 
 def decode_access_token(token: str) -> dict[str, Any]:
     """Decode and validate signed JWT access token."""
-    return jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+    return jwt.decode(
+        token,
+        settings.SECRET_KEY,
+        algorithms=[settings.ALGORITHM],
+        options={"require": ["sub", "iat", "exp"]},
+    )
 
 
 def get_user_by_username(db: Session, username: str) -> User | None:

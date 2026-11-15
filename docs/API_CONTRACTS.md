@@ -1,10 +1,20 @@
 # Proposed ingestion API contract
 
-Status: design for Tanish's ingestion implementation; no FastAPI routes, database
-code, or scoring pipeline are implemented here. Payload definitions are in
-[EVENT_SCHEMA.md](EVENT_SCHEMA.md). API authentication/authorization must be agreed
-separately before deployment; `source` is producer metadata, not an authorization
-claim.
+Status: v1 payload and response contract, now implemented by the backend. Payload
+definitions are in [EVENT_SCHEMA.md](EVENT_SCHEMA.md). Task 008B adds producer
+authentication to every HTTP ingestion route. `source` is metadata checked against
+the authenticated producer's assigned source, never a credential.
+The error and concurrent replay requirements below remain design targets; existing
+implementation gaps are tracked for later backend work.
+
+## Authentication added in Task 008B
+
+`POST /events`, `POST /api/v1/events`, and `POST /api/v1/events/login` require
+`X-Sentinel-Producer-Key: <provisioned key>`. These keys are separate from user JWTs.
+Missing, invalid, or revoked keys return 401 before ingestion; a valid key for
+another `source` returns 403. Neither condition persists an event or runs detection.
+See [SECURITY.md](SECURITY.md) for provisioning, rotation, and revocation. The v1
+event JSON and authorized replay/conflict behavior are unchanged.
 
 ## POST /events
 
@@ -118,7 +128,8 @@ the count. It returns `{rule_id, triggered, failed_attempts, reason}` only.
    `failed_login_burst` only when this rule's `triggered` flag is true; it assigns
    35 points by default. A non-triggered rule supplies no signal. The scorer's
    result is internal and must be explicitly adapted into the event-level
-   envelope. No adapter or envelope generation has been added to production code.
+   envelope. The backend now implements envelope generation; this paragraph retains
+   the original offline detector integration guidance.
 5. Run `python -m pytest -q` from the repository root. Contract fixture validation
    uses only the standard library plus the existing pytest dependency. The adapter
    integration test verifies compatibility with the unchanged detector. Backend

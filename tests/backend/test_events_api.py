@@ -11,6 +11,7 @@ from backend.database import Base, get_db
 from backend.main import app
 from backend.models.user import User
 from backend.security.dependencies import get_current_user
+from backend.services.producer_service import provision_producer
 
 
 @pytest.fixture
@@ -43,7 +44,10 @@ def client_with_db():
         account_status="active",
         password_hash="fakehash",
     )
+    with TestingSessionLocal() as session:
+        _, producer_key = provision_producer(session, name="test-events-producer", source="*")
     with TestClient(app) as test_client:
+        test_client.headers.update({"X-Sentinel-Producer-Key": producer_key})
         yield test_client
 
     app.dependency_overrides.clear()

@@ -2,15 +2,35 @@
 
 from collections.abc import Callable
 from fastapi import Depends, HTTPException, Security, status
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from fastapi.security import APIKeyHeader, HTTPAuthorizationCredentials, HTTPBearer
 import jwt
 from sqlalchemy.orm import Session
 
 from ..database import get_db
+from ..config import settings
 from ..models.user import User
+from ..models.producer import EventProducer
 from ..services.auth_service import decode_access_token, get_user_by_username
+from ..services.producer_service import verify_producer_key
 
 security_bearer = HTTPBearer(auto_error=False)
+producer_header = APIKeyHeader(name="X-Sentinel-Producer-Key", auto_error=False)
+
+
+def require_producer(
+    key: str | None = Security(producer_header),
+    db: Session = Depends(get_db),
+) -> EventProducer:
+    """Authorize an event producer separately from user JWT credentials."""
+    producer = verify_producer_key(db, key) if key else None
+    if producer is None:
+        raise HTTPException(status_code=401, detail="Valid producer credential required")
+    return producer
+
+
+def require_producer_source(producer: EventProducer, source: str) -> None:
+    if producer.source != source and not (settings.ENVIRONMENT == "testing" and producer.source == "*"):
+        raise HTTPException(status_code=403, detail="Producer is not authorized for this source")
 
 
 def get_current_user(

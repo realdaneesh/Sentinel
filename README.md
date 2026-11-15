@@ -29,15 +29,18 @@ py -3.14 -m venv .venv
 .\.venv\Scripts\python.exe -m pip check
 ```
 
-For a local SQLite instance, copy the example configuration, keep `ENVIRONMENT=development` and `DATABASE_URL=sqlite:///./sentinel.db`, and set a local development-only `SECRET_KEY` in `.env`. The application creates SQLite tables at startup. Keep `.env` and `sentinel.db` outside version control.
+For a local SQLite instance, copy the example configuration, keep `ENVIRONMENT=development` and `DATABASE_URL=sqlite:///./sentinel.db`, and replace the intentionally invalid `SECRET_KEY` placeholder in `.env` with a stable, randomly generated value. The application creates SQLite tables at startup. Keep `.env` and `sentinel.db` outside version control.
 
 ```powershell
 Copy-Item .env.example .env
+$secret = .\.venv\Scripts\python.exe -c "import secrets; print(secrets.token_urlsafe(48))"
+(Get-Content .env) -replace '^SECRET_KEY=.*$', "SECRET_KEY=$secret" | Set-Content .env
+Remove-Variable secret
 $env:DEBUG = 'true' # Override a conflicting machine-level DEBUG value if present.
 .\.venv\Scripts\python.exe -m uvicorn backend.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
-The health endpoint is `http://127.0.0.1:8000/health`; interactive API documentation is at `/docs`. Use only synthetic authentication data. The current public registration and ingestion behavior is under security review, so bind development servers to loopback.
+The health endpoint is `http://127.0.0.1:8000/health`; interactive API documentation is at `/docs`. Use only synthetic authentication data and bind development servers to loopback. Before using protected endpoints, create the first administrator locally and provision a source-bound event producer as described in [Security operations](docs/SECURITY.md).
 
 Run tests from the repository root with a writable pytest temporary directory:
 
@@ -52,11 +55,11 @@ $env:DEBUG = 'true'
 
 ## API Summary
 
-- **Authentication (`/api/v1/auth`):** `/register`, `/login`, `/me`, `/users` (admin-only)
-- **Ingestion (`/api/v1/events` & root `/events`):** Strict v1 ingestion, `/events/login` convenience endpoint, `/events` query with filters & pagination
+- **Authentication (`/api/v1/auth`):** viewer-only public registration, login, profile, admin-only user listing and role management
+- **Ingestion (`/api/v1/events` & root `/events`):** source-bound producer key required for all POST routes; protected event queries and filtering
 - **Incidents (`/api/v1/incidents`):** List incidents, retrieve details with contributing event traces, update investigation status (`open`, `investigating`, `resolved`, `false_positive`)
 - **Alerts (`/api/v1/alerts`):** Prioritized security alerts, acknowledgement workflow (`is_acknowledged`, `acknowledged_by`)
-- **Simulator (`/api/v1/simulator`):** `/generate` (synthetic offline scenarios: `failed_login_burst`, `normal_activity`, `unfamiliar_device`, `unfamiliar_ip`)
+- **Simulator (`/api/v1/simulator`):** admin-only `/generate`; API persistence also requires explicit development or testing enablement. The offline CLI needs no API credentials.
 
 ---
 

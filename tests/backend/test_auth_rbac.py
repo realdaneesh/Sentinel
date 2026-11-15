@@ -87,12 +87,11 @@ class TestAuthenticationFlow:
             "username": "new_analyst",
             "password": "SecurePassword999!",
             "email": "analyst@sentinel.org",
-            "role": "analyst",
         })
         assert res1.status_code == 201
         data = res1.json()
         assert data["username"] == "new_analyst"
-        assert data["role"] == "analyst"
+        assert data["role"] == "viewer"
 
         # 2. Duplicate username rejection
         res2 = client.post("/api/v1/auth/register", json={

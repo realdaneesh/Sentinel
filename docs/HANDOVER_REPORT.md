@@ -1,5 +1,9 @@
 # Sentinel — Final Handover Report (Person B: Tanish)
 
+> Historical report for the pre-008B backend. Current ingestion requires producer
+> credentials, public registration is viewer-only, and the simulator requires an
+> administrator JWT. See [SECURITY.md](SECURITY.md) for implemented behavior.
+
 **Project:** Sentinel – AI-Powered Identity Threat Detection Platform  
 **Developer (Person B):** Tanish (Backend Integration & Application Infrastructure)  
 **Collaborator (Person A):** Daneesh (Detection Engine, Risk Scoring, & Incident Correlation)  

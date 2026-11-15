@@ -15,6 +15,7 @@ from backend.models.audit import AuditLog
 from backend.models.event import LoginEvent
 from backend.models.incident import Incident
 from backend.services.auth_service import create_user
+from backend.services.producer_service import provision_producer
 
 
 @pytest.fixture
@@ -45,8 +46,10 @@ def e2e_client_and_db():
         # Pre-seed analyst and viewer users
         create_user(session, username="analyst_e2e", password="Password123!", role="analyst")
         create_user(session, username="viewer_e2e", password="Password123!", role="viewer")
+        _, producer_key = provision_producer(session, name="test-e2e-producer", source="*")
 
     with TestClient(app) as test_client:
+        test_client.headers.update({"X-Sentinel-Producer-Key": producer_key})
         yield test_client, TestingSessionLocal
 
     app.dependency_overrides.clear()

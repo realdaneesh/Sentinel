@@ -1,17 +1,20 @@
 """Authentication and user management API routes."""
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from ...database import get_db
 from ...models.user import User
+from ...models.audit import AuditLog
+from ...models.base import utc_now
 from ...schemas.auth import (
     TokenResponse,
     UserLoginRequest,
     UserRegisterRequest,
     UserResponse,
+    UserRoleUpdate,
 )
 from ...security.dependencies import get_current_user, require_role
 from ...services.auth_service import (
@@ -40,7 +43,7 @@ def register(
             username=payload.username,
             password=payload.password,
             email=payload.email,
-            role=payload.role,
+            role="viewer",
         )
         from ...services.audit_service import record_audit_log
         record_audit_log(
@@ -112,4 +115,39 @@ def list_users(
     """List all registered users (Administrator only)."""
     users = list(db.execute(select(User).order_by(User.created_at.desc())).scalars().all())
     return [UserResponse.model_validate(u) for u in users]
+
+
+@router.patch("/users/{user_id}/role", response_model=UserResponse)
+def update_user_role(
+    user_id: str,
+    payload: UserRoleUpdate,
+    current_user: User = Depends(require_role(["admin"])),
+    db: Session = Depends(get_db),
+) -> UserResponse:
+    """Change a role as an administrator while preserving an active administrator."""
+    user = db.get(User, user_id)
+    if user is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    old_role = user.role
+    if old_role == "admin" and payload.role != "admin" and user.account_status == "active":
+        active_admins = db.scalar(
+            select(func.count()).select_from(User).where(
+                User.role == "admin", User.account_status == "active"
+            )
+        )
+        if active_admins <= 1:
+            raise HTTPException(status_code=409, detail="Cannot demote the final active administrator")
+    if payload.role != old_role:
+        user.role = payload.role
+        db.add(AuditLog(
+            actor=current_user.username,
+            action="CHANGE_USER_ROLE",
+            resource_type="user",
+            resource_id=user.id,
+            timestamp=utc_now(),
+            details={"old_role": old_role, "new_role": payload.role},
+        ))
+        db.commit()
+        db.refresh(user)
+    return UserResponse.model_validate(user)
 

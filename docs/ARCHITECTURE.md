@@ -129,6 +129,10 @@ The relational schema is implemented with SQLAlchemy 2.0 ORM:
    - `timestamp`: DateTime (UTC)
    - `details`: JSON
 
+7. **`event_producers`** (Task 008B): source-bound producer ID, name, SHA-256 key
+   digest, active flag, and creation/revocation timestamps. Existing installations
+   need a table migration; see [SECURITY.md](SECURITY.md).
+
 ---
 
 ## 3. REST API Endpoint Reference
@@ -136,16 +140,17 @@ The relational schema is implemented with SQLAlchemy 2.0 ORM:
 ### Authentication (`/api/v1/auth`)
 | Method | Path | Auth / Role | Description |
 |---|---|---|---|
-| `POST` | `/api/v1/auth/register` | Public | Register user account |
+| `POST` | `/api/v1/auth/register` | Public | Register viewer account only |
 | `POST` | `/api/v1/auth/login` | Public | Obtain Bearer JWT token |
 | `GET` | `/api/v1/auth/me` | Bearer Token | View current user profile |
 | `GET` | `/api/v1/auth/users` | `admin` | List registered users |
+| `PATCH` | `/api/v1/auth/users/{user_id}/role` | `admin` | Change role; sequential final-admin guard, with concurrent updates pending database enforcement |
 
 ### Ingestion & Events (`/api/v1/events` and root `/events`)
 | Method | Path | Auth / Role | Description |
 |---|---|---|---|
-| `POST` | `/events` & `/api/v1/events` | Public | Canonical v1 ingestion with strict idempotency |
-| `POST` | `/api/v1/events/login` | Public | Convenience login ingestion format |
+| `POST` | `/events` & `/api/v1/events` | Source-bound producer key | Canonical v1 ingestion with strict idempotency |
+| `POST` | `/api/v1/events/login` | Source-bound producer key | Convenience login ingestion format |
 | `GET` | `/api/v1/events` | `viewer`+ | List events with filtering & pagination |
 | `GET` | `/api/v1/events/{id}` | `viewer`+ | Retrieve event by ID |
 
@@ -166,7 +171,7 @@ The relational schema is implemented with SQLAlchemy 2.0 ORM:
 ### Simulator (`/api/v1/simulator`)
 | Method | Path | Auth / Role | Description |
 |---|---|---|---|
-| `POST` | `/api/v1/simulator/generate` | Public | Generate synthetic test scenarios (`failed_login_burst`, `normal_activity`, `unfamiliar_device`, `unfamiliar_ip`) |
+| `POST` | `/api/v1/simulator/generate` | `admin` JWT | Generate synthetic scenarios; persistence requires explicit nonproduction enablement |
 
 ---
 
@@ -184,8 +189,13 @@ cp .env.example .env
 Default configuration uses local SQLite:
 ```env
 DATABASE_URL=sqlite:///./sentinel.db
-SECRET_KEY=generate-a-secure-random-key-for-production
 ```
+
+`SECRET_KEY` has no usable default. Generate a stable random value and store it
+outside version control. Bootstrap, producer keys, required headers, and simulator
+controls are documented in [SECURITY.md](SECURITY.md). PostgreSQL deployment and
+migrations have not been verified. The example signing-key placeholder is invalid
+until replaced.
 
 ### Running the API Server
 Start the development server with Uvicorn:

@@ -16,6 +16,11 @@ The detection engine is pure, deterministic, and memory-only. The backend adapte
 
 ## 2. Ingestion to Detection Workflow
 
+Before validation or persistence, each HTTP ingestion route authenticates a
+source-bound producer key from `X-Sentinel-Producer-Key`. User JWTs do not
+authorize ingestion. See [SECURITY.md](SECURITY.md) for local provisioning and
+revocation. The offline detector is independent of HTTP authentication.
+
 ```
 [Inbound Login Event]
         │

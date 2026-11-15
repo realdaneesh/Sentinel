@@ -2,7 +2,7 @@
 
 from datetime import datetime
 from typing import Literal
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 UserRole = Literal["admin", "analyst", "viewer"]
@@ -10,10 +10,17 @@ AccountStatus = Literal["active", "suspended", "disabled"]
 
 
 class UserRegisterRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     username: str = Field(..., min_length=3, max_length=64)
     email: str | None = None
     password: str = Field(..., min_length=8, max_length=128)
-    role: UserRole = "viewer"
+
+
+class UserRoleUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    role: UserRole
 
 
 class UserLoginRequest(BaseModel):

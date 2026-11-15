@@ -20,7 +20,8 @@ from ...schemas.event import (
     LoginEventResponse,
     PaginatedEventListResponse,
 )
-from ...security.dependencies import require_role
+from ...models.producer import EventProducer
+from ...security.dependencies import require_producer, require_producer_source, require_role
 from ...services.event_service import (
     EventConflictError,
     get_event_by_id,
@@ -46,6 +47,7 @@ router = APIRouter(tags=["Events"])
 )
 async def post_event(
     request: Request,
+    producer: EventProducer = Depends(require_producer),
     db: Session = Depends(get_db),
 ) -> Response:
     """Ingest a single authentication event adhering to v1 event schema and API contracts."""
@@ -137,6 +139,7 @@ async def post_event(
             },
         )
 
+    require_producer_source(producer, payload.source)
     try:
         status_code, result_status, detection_result = ingest_event(db, payload, run_detection=True)
         return JSONResponse(
@@ -168,6 +171,7 @@ async def post_event(
 )
 async def post_login_event(
     request: Request,
+    producer: EventProducer = Depends(require_producer),
     db: Session = Depends(get_db),
 ) -> Response:
     """Convenience endpoint accepting either canonical v1 events or flexible login formats."""
@@ -235,6 +239,7 @@ async def post_login_event(
             },
         )
 
+    require_producer_source(producer, payload.source)
     try:
         status_code, result_status, detection_result = ingest_event(db, payload, run_detection=True)
         return JSONResponse(

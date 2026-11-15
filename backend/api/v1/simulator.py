@@ -2,11 +2,14 @@
 
 from datetime import datetime, timezone
 from typing import Literal
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from ...database import get_db
+from ...config import settings
+from ...models.user import User
+from ...security.dependencies import require_role
 from ...schemas.event import EventIngestPayload
 from ...services.event_service import ingest_event
 from services.simulator.generator import (
@@ -41,9 +44,13 @@ class SimulatorGenerateResponse(BaseModel):
 )
 def generate_synthetic_events(
     request: SimulatorGenerateRequest,
+    current_user: User = Depends(require_role(["admin"])),
     db: Session = Depends(get_db),
 ) -> SimulatorGenerateResponse:
     """Generate reproducible test authentication events and optionally persist them."""
+    if request.ingest and (settings.ENVIRONMENT not in ("development", "testing")
+                           or not settings.SIMULATOR_PERSISTENCE_ENABLED):
+        raise HTTPException(status_code=403, detail="Simulator persistence is disabled")
     if request.reference_time:
         ref_time = datetime.fromisoformat(request.reference_time.replace("Z", "+00:00")).astimezone(timezone.utc)
     else:
