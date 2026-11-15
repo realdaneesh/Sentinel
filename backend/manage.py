@@ -7,13 +7,19 @@ from datetime import datetime, timezone
 
 from sqlalchemy import func, select
 
-from .database import SessionLocal, init_db
+from .database import SessionLocal, init_db  # init_db retained for legacy test overrides only
 from .models.user import User
 from .models.event import LoginEvent
+from .models.coordination import IdentityProcessingState
 from .services.detection_adapter import reconcile_identity
 from .services.audit_service import record_audit_log
 from .services.auth_service import create_user
 from .services.producer_service import provision_producer, revoke_producer, rotate_producer
+from .services.coordination import lock_administrators
+
+
+def _utc_now() -> datetime:
+    return datetime.now(timezone.utc)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -33,9 +39,9 @@ def main(argv: list[str] | None = None) -> int:
     reevaluate.add_argument("--identity", help="Limit reevaluation to one exact user_id")
     args = parser.parse_args(argv)
 
-    init_db()
     with SessionLocal() as db:
         if args.command == "bootstrap-admin":
+            lock_administrators(db)
             active_admins = db.scalar(select(func.count()).select_from(User).where(
                 User.role == "admin", User.account_status == "active"
             ))
@@ -45,10 +51,11 @@ def main(argv: list[str] | None = None) -> int:
             confirm = getpass.getpass("Confirm password: ")
             if password != confirm or len(password) < 8 or len(password.encode("utf-8")) > 72:
                 parser.error("Passwords must match and be 8 to 72 UTF-8 bytes")
-            user = create_user(db, username=args.username, password=password, role="admin")
+            user = create_user(db, username=args.username, password=password, role="admin", commit=False)
             record_audit_log(db, actor="local/bootstrap", action="BOOTSTRAP_ADMIN",
                              resource_type="user", resource_id=user.id,
-                             details={"username": user.username})
+                             details={"username": user.username}, commit=False)
+            db.commit()
             print(f"Created administrator {user.username} ({user.id})")
         elif args.command == "provision-producer":
             producer, key = provision_producer(db, name=args.name, source=args.source)
@@ -65,14 +72,27 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command == "reevaluate-due":
             try:
                 evaluation_time = (datetime.fromisoformat(args.at.replace("Z", "+00:00"))
-                                   if args.at else datetime.now(timezone.utc))
+                                   if args.at else _utc_now())
                 if evaluation_time.tzinfo is None or evaluation_time.utcoffset() is None:
                     raise ValueError("timestamp must include a UTC offset")
             except ValueError:
                 parser.error("--at must be a timezone-aware ISO timestamp")
+            evaluation_time = evaluation_time.astimezone(timezone.utc)
+            if evaluation_time > _utc_now():
+                parser.error("--at cannot be later than the current UTC time")
             identities = ([args.identity] if args.identity else sorted(db.scalars(
                 select(LoginEvent.user_id).distinct()
             ).all()))
+            if identities:
+                states = db.scalars(select(IdentityProcessingState).where(
+                    IdentityProcessingState.user_id.in_(identities))).all()
+                if any(state.evaluated_through is not None and
+                       (state.evaluated_through.replace(tzinfo=timezone.utc)
+                        if state.evaluated_through.tzinfo is None
+                        else state.evaluated_through.astimezone(timezone.utc)) > evaluation_time
+                       for state in states):
+                    parser.error("--at precedes a persisted processing watermark; use offline analysis")
+            db.rollback()  # End the read transaction before acquiring identity write guards.
             for identity in identities:
                 reconcile_identity(db, identity, evaluation_time=evaluation_time)
             print(f"Reevaluated {len(identities)} identity/identities")

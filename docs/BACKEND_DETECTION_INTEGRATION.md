@@ -94,7 +94,7 @@ revocation. The offline detector is independent of HTTP authentication.
 
 ## 4. Error Handling & Reliability
 
-- **Detection Failures:** An unhandled detection exception marks the accepted event as failed.
+- **Detection Failures:** A failed reconciliation rolls back atomically. The accepted event is marked `failed` in a separate transaction, or remains recoverable as `pending` if that status write also fails.
 - **Auditability:** Detection envelopes store the configured detector version and scorer reasons.
 - **Chronological Ordering:** Historical events are ordered by `(timestamp, event_id)`.
 
@@ -141,11 +141,16 @@ is no public reevaluation route or background scheduler. Late events trigger a
 full recomputation of their identity at the current processing reference, with
 no fixed reconciliation horizon. Previously eligible event results can change.
 
+Task 008D acquires a database-backed exact-identity guard before this read and
+uses a nondecreasing processing watermark. Accepted event insertion commits
+first; event-result, incident, evidence, alert, and watermark changes commit
+together. Failed processing rolls back and is locally retryable. See
+[database migrations and transactions](DATABASE_MIGRATIONS_AND_TRANSACTIONS.md).
+
 This correctness-first approach reads all events for the identity and runs
 per-event windows and full correlation. It can become expensive for long histories
 and should be optimized with proven equivalence tests. The database schema adds
 incident fingerprint, current-state, lineage, and evidence-history columns plus
-an alert current-state column. Existing databases need a reviewed migration and
-backfill; `create_all` does not alter existing tables. Concurrent ingestion and
-transaction failure paths remain Task 008D work; PostgreSQL is unverified.
+an alert current-state column. Alembic migrations now cover the original backend
+schema and these additions. PostgreSQL remains unverified.
 

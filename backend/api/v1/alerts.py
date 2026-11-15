@@ -2,9 +2,12 @@
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import SQLAlchemyError
 
 from ...database import get_db
 from ...models.user import User
+from ...models.alert import Alert
+from ...models.incident import Incident
 from ...schemas.alert import (
     AlertDetailResponse,
     AlertResponse,
@@ -17,6 +20,8 @@ from ...services.alert_service import (
     get_alert_by_id,
     list_alerts,
 )
+from ...services.coordination import lock_administrators, lock_identity
+from ...services.audit_service import record_audit_log
 
 router = APIRouter(prefix="/alerts", tags=["Alerts"])
 
@@ -91,26 +96,27 @@ def patch_alert(
             detail="Cannot unacknowledge an alert once created",
         )
 
-    updated = acknowledge_alert(
-        db,
-        alert_id,
-        acknowledged_by=payload.acknowledged_by or current_user.username,
-    )
-    if updated is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Alert not found: {alert_id}",
-        )
-
-    from ...services.audit_service import record_audit_log
-    record_audit_log(
-        db,
-        actor=current_user.username,
-        action="ACKNOWLEDGE_ALERT",
-        resource_type="alert",
-        resource_id=alert_id,
-        details={"acknowledged_by": updated.acknowledged_by},
-    )
-
-    return AlertDetailResponse.model_validate(updated)
+    try:
+        actor_id = current_user.id
+        lock_administrators(db)
+        actor = db.get(User, actor_id, populate_existing=True)
+        if actor is None or actor.account_status != "active" or actor.role not in ("admin", "analyst"):
+            raise HTTPException(status_code=403, detail="Analyst access required")
+        existing = db.get(Alert, alert_id)
+        if existing is None:
+            raise HTTPException(status_code=404, detail=f"Alert not found: {alert_id}")
+        incident = db.get(Incident, existing.incident_id)
+        lock_identity(db, incident.user_id)
+        db.expire_all()
+        updated = acknowledge_alert(db, alert_id,
+                                    acknowledged_by=payload.acknowledged_by or actor.username,
+                                    commit=False)
+        record_audit_log(db, actor=actor.username, action="ACKNOWLEDGE_ALERT",
+                         resource_type="alert", resource_id=alert_id,
+                         details={"acknowledged_by": updated.acknowledged_by}, commit=False)
+        db.commit()
+        return AlertDetailResponse.model_validate(updated)
+    except SQLAlchemyError:
+        db.rollback()
+        raise HTTPException(status_code=503, detail="Storage unavailable")
 

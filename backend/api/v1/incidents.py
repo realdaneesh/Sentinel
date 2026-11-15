@@ -3,9 +3,11 @@
 from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import SQLAlchemyError
 
 from ...database import get_db
 from ...models.user import User
+from ...models.incident import Incident
 from ...schemas.incident import (
     IncidentDetailResponse,
     IncidentResponse,
@@ -18,6 +20,8 @@ from ...services.incident_service import (
     list_incidents,
     update_incident,
 )
+from ...services.coordination import lock_administrators, lock_identity
+from ...services.audit_service import record_audit_log
 
 router = APIRouter(prefix="/incidents", tags=["Incidents"])
 
@@ -94,27 +98,26 @@ def patch_incident(
     db: Session = Depends(get_db),
 ) -> IncidentDetailResponse:
     """Update incident investigation status (restricted to Analyst and Administrator)."""
-    updated = update_incident(
-        db,
-        incident_id,
-        status=payload.status,
-        description=payload.description,
-    )
-    if updated is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Incident not found: {incident_id}",
-        )
-
-    from ...services.audit_service import record_audit_log
-    record_audit_log(
-        db,
-        actor=current_user.username,
-        action="UPDATE_INCIDENT_STATUS",
-        resource_type="incident",
-        resource_id=incident_id,
-        details={"status": payload.status, "description": payload.description},
-    )
-
-    return IncidentDetailResponse.model_validate(updated)
+    try:
+        actor_id = current_user.id
+        lock_administrators(db)
+        actor = db.get(User, actor_id, populate_existing=True)
+        if actor is None or actor.account_status != "active" or actor.role not in ("admin", "analyst"):
+            raise HTTPException(status_code=403, detail="Analyst access required")
+        existing = db.get(Incident, incident_id)
+        if existing is None:
+            raise HTTPException(status_code=404, detail=f"Incident not found: {incident_id}")
+        lock_identity(db, existing.user_id)
+        db.expire_all()
+        updated = update_incident(db, incident_id, status=payload.status,
+                                  description=payload.description, commit=False)
+        record_audit_log(db, actor=actor.username, action="UPDATE_INCIDENT_STATUS",
+                         resource_type="incident", resource_id=incident_id,
+                         details={"status": payload.status, "description": payload.description},
+                         commit=False)
+        db.commit()
+        return IncidentDetailResponse.model_validate(updated)
+    except SQLAlchemyError:
+        db.rollback()
+        raise HTTPException(status_code=503, detail="Storage unavailable")
 

@@ -6,6 +6,10 @@
 > [BACKEND_DETECTION_INTEGRATION.md](BACKEND_DETECTION_INTEGRATION.md) for the
 > persistent matching and lifecycle policy.
 
+Database reconciliation serializes each exact identity and advances a monotonic
+processing watermark. These backend concerns do not change this offline function;
+see [database migrations and transactions](DATABASE_MIGRATIONS_AND_TRANSACTIONS.md).
+
 `services.detection.incident_correlation.correlate_incidents(events, *,
 evaluation_time, correlation_window=timedelta(minutes=15), min_history=1)`
 accepts an in-memory iterable of v1 authentication events and returns a list of

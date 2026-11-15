@@ -17,13 +17,13 @@ def create_alert_for_incident(
 ) -> Alert:
     """Generate an alert for a correlated incident with duplicate prevention.
 
-    Prevents generating duplicate unacknowledged alerts for the same incident and alert type.
+    Reuses the current alert, including an acknowledged alert, for this incident and type.
     """
     stmt = (
         select(Alert)
         .where(Alert.incident_id == incident.incident_id)
         .where(Alert.alert_type == alert_type)
-        .where(Alert.is_acknowledged.is_(False))
+        .where(Alert.is_current.is_(True))
     )
     existing = db.execute(stmt).scalar_one_or_none()
     if existing is not None:
@@ -97,6 +97,7 @@ def acknowledge_alert(
     db: Session,
     alert_id: str,
     acknowledged_by: str | None = None,
+    commit: bool = True,
 ) -> Alert | None:
     """Acknowledge an alert and record the analyst identity and timestamp."""
     alert = get_alert_by_id(db, alert_id)
@@ -108,6 +109,7 @@ def acknowledge_alert(
     alert.acknowledged_at = utc_now()
     alert.updated_at = utc_now()
 
-    db.commit()
-    db.refresh(alert)
+    if commit:
+        db.commit()
+        db.refresh(alert)
     return alert

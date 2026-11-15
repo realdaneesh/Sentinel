@@ -2,7 +2,7 @@
 
 import uuid
 from datetime import datetime
-from sqlalchemy import Boolean, DateTime, ForeignKey, Index, String, Text
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, String, Text, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ..database import Base
@@ -71,6 +71,9 @@ class Alert(Base):
 
     __table_args__ = (
         Index("ix_alerts_severity_ack", "severity", "is_acknowledged"),
+        Index("uq_current_alert_type_per_incident", "incident_id", "alert_type",
+              unique=True, sqlite_where=text("is_current = 1"),
+              postgresql_where=text("is_current = true")),
     )
 
     def __repr__(self) -> str:

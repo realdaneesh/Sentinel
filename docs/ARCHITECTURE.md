@@ -136,6 +136,13 @@ The relational schema is implemented with SQLAlchemy 2.0 ORM:
    digest, active flag, and creation/revocation timestamps. Existing installations
    need a table migration; see [SECURITY.md](SECURITY.md).
 
+8. **`identity_processing_states`** (Task 008D): exact `user_id` primary key,
+   monotonic `evaluated_through` timestamp, and lock version for serialized
+   reconciliation and analyst writes.
+
+9. **`administrator_guards`** (Task 008D): singleton guard row for bootstrap
+   and active-administrator role invariants.
+
 ---
 
 ## 3. REST API Endpoint Reference
@@ -200,8 +207,11 @@ controls are documented in [SECURITY.md](SECURITY.md). PostgreSQL deployment and
 migrations have not been verified. The example signing-key placeholder is invalid
 until replaced.
 
-Task 008C also adds incident and alert columns. Existing databases require a
-reviewed migration and backfill; only fresh databases are created by `create_all`.
+Task 008C adds incident and alert columns. Task 008D adds versioned Alembic
+migrations and persistent coordination tables. Existing original backend databases
+require validated adoption; `create_all` is only for isolated tests and never
+upgrades an existing schema. See
+[database migrations and transactions](DATABASE_MIGRATIONS_AND_TRANSACTIONS.md).
 Use the local `python -m backend.manage reevaluate-due` command for due events.
 Incident and alert list APIs default to current records and support
 `include_historical=true`; details remain retrievable by persistent ID.

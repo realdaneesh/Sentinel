@@ -29,7 +29,7 @@ py -3.14 -m venv .venv
 .\.venv\Scripts\python.exe -m pip check
 ```
 
-For a local SQLite instance, copy the example configuration, keep `ENVIRONMENT=development` and `DATABASE_URL=sqlite:///./sentinel.db`, and replace the intentionally invalid `SECRET_KEY` placeholder in `.env` with a stable, randomly generated value. The application creates SQLite tables at startup. Keep `.env` and `sentinel.db` outside version control.
+For a local SQLite instance, copy the example configuration, keep `ENVIRONMENT=development` and `DATABASE_URL=sqlite:///./sentinel.db`, and replace the intentionally invalid `SECRET_KEY` placeholder in `.env` with a stable, randomly generated value. Migrate the database before starting the API. Keep `.env` and `sentinel.db` outside version control.
 
 ```powershell
 Copy-Item .env.example .env
@@ -37,6 +37,7 @@ $secret = .\.venv\Scripts\python.exe -c "import secrets; print(secrets.token_url
 (Get-Content .env) -replace '^SECRET_KEY=.*$', "SECRET_KEY=$secret" | Set-Content .env
 Remove-Variable secret
 $env:DEBUG = 'true' # Override a conflicting machine-level DEBUG value if present.
+.\.venv\Scripts\python.exe -m backend.migrate upgrade --database-url sqlite:///./sentinel.db
 .\.venv\Scripts\python.exe -m uvicorn backend.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
@@ -64,8 +65,8 @@ $env:DEBUG = 'true'
 ## Detection reevaluation
 
 Future-dated events are accepted as pending. A local administrator can process
-eligible events at the current UTC time, or supply an explicit aware ISO time for
-deterministic replay:
+eligible events at the current UTC time, or supply an explicit aware ISO time
+that is neither future-dated nor earlier than a persisted processing watermark:
 
 ```powershell
 .\.venv\Scripts\python.exe -m backend.manage reevaluate-due
@@ -74,15 +75,16 @@ deterministic replay:
 
 The command is local and has no HTTP route. Late events automatically recompute
 their exact identity. Incident and alert lists show current records by default;
-`include_historical=true` includes superseded records. Existing databases require
-a reviewed schema migration before running Task 008C code. See
-[backend detection integration](docs/BACKEND_DETECTION_INTEGRATION.md).
+`include_historical=true` includes superseded records. The supported original
+database adoption path, transaction policy, and recovery limits are in
+[database migrations and transactions](docs/DATABASE_MIGRATIONS_AND_TRANSACTIONS.md).
 
 ---
 
 ## Documentation Links
 
 - [System Architecture & Schema Guide](docs/ARCHITECTURE.md)
+- [Database Migrations and Transactions](docs/DATABASE_MIGRATIONS_AND_TRANSACTIONS.md)
 - [Backend to Detection Engine Integration Contract](docs/BACKEND_DETECTION_INTEGRATION.md)
 - [Final Handover Report](docs/HANDOVER_REPORT.md)
 - [Authentication Event Contract v1](docs/EVENT_SCHEMA.md)

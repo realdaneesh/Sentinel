@@ -46,6 +46,13 @@ class EventIngestPayload(BaseModel):
     device_id: str | None = None
     failure_reason: str | None = None
 
+    @field_validator("ip_address", "device_id", "failure_reason", mode="before")
+    @classmethod
+    def reject_explicit_null(cls, value: Any) -> Any:
+        if value is None:
+            raise ValueError("optional fields must be omitted rather than null")
+        return value
+
     @field_validator("event_id")
     @classmethod
     def validate_event_id(cls, v: str) -> str:

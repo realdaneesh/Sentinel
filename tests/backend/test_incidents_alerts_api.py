@@ -50,6 +50,8 @@ def client_and_db():
 
     now = datetime(2026, 11, 14, 10, 0, tzinfo=timezone.utc)
     with TestingSessionLocal() as session:
+        session.add(User(id="usr-analyst-test", username="analyst_tester",
+                         role="analyst", account_status="active", password_hash="fakehash"))
         # Create events
         e1 = LoginEvent(
             event_id="evt-inc-1",

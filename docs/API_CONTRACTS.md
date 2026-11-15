@@ -4,8 +4,10 @@ Status: v1 payload and response contract, now implemented by the backend. Payloa
 definitions are in [EVENT_SCHEMA.md](EVENT_SCHEMA.md). Task 008B adds producer
 authentication to every HTTP ingestion route. `source` is metadata checked against
 the authenticated producer's assigned source, never a credential.
-The error and concurrent replay requirements below remain design targets; existing
-implementation gaps are tracked for later backend work.
+Task 008D implements event-ID-targeted concurrent replay and strict duplicate-key
+and optional-null validation. See
+[database migrations and transactions](DATABASE_MIGRATIONS_AND_TRANSACTIONS.md)
+for the transaction and recovery policy.
 
 ## Authentication added in Task 008B
 
@@ -43,15 +45,21 @@ For a new event, respond **201 Created** only after durable persistence:
 Acceptance means stored, not scored or proven safe. Eligible events normally
 receive the detection envelope specified in EVENT_SCHEMA.md in this response.
 Future-dated events retain a null result until reevaluation. A rule execution
-failure after storage does not erase the accepted event. Automatic retry or queue
-processing is not implemented.
+failure after storage does not erase the accepted event; the stored event is
+`failed` or remains `pending` if failure-status persistence also fails. Local
+`reevaluate-due` retries either state. Automatic queue processing is not implemented.
+The POST response confirms durable acceptance: a non-null `detection_result`
+means detection completed, while null means deferred or failed processing.
+An authorized viewer or analyst can query `GET /api/v1/events/{event_id}` and
+read `detection_status` (`pending`, `evaluated`, or `failed`) to distinguish those
+states. Producer keys alone do not authorize that read.
 
 An identical retry returns **200 OK** with `status: "duplicate"`, the original
 `event_id`, response `schema_version: "1.0"`, and the currently stored
 `detection_result` (possibly null). Do not insert a second event or dispatch detection again.
 The request body's `event_id` is the idempotency key; no separate
 `Idempotency-Key` header is defined. Enforce this with a database uniqueness
-constraint and atomic conflict handling, including concurrent requests. Duplicate
+constraint and event-ID-targeted conflict handling, including concurrent requests. Duplicate
 comparison and retention semantics are specified in EVENT_SCHEMA.md.
 
 An existing ID with a different validated payload returns **409 Conflict**:
@@ -84,17 +92,15 @@ Validation detail codes: `required`, `unknown_field`, `invalid_type`,
 `field: "$"` and `code: "invalid_type"`. Validation takes precedence over
 duplicate/conflict lookup. Clients must branch on status/codes, not message text.
 
-## Integration guide for Tanish
+## Historical integration guidance
 
-1. Implement validation and atomic persistence against the event contract. Keep
-   `user_id`, `timestamp`, and source metadata intact. Deduplicate before loading
-   history for detection; the current rule counts each supplied row.
-2. Fetch unique events for the exact user in the inclusive interval
-   `[evaluation_time - 15 minutes, evaluation_time]`. Capture one aware UTC
-   evaluation time. Include the newly accepted event once if it lies in that
-   interval. Future events must not count. Late events outside this interval do
-   not count for a current-time evaluation; historical replay requires an explicit
-   historical evaluation time and the corresponding history.
+1. Validate and atomically persist the event contract. Keep `user_id`,
+   `timestamp`, and source metadata intact. Deduplicate before loading history.
+2. Read all eligible events for the exact user at a nondecreasing, aware UTC
+   processing time. Build inclusive 15-minute burst windows per event and use
+   all strictly earlier successes for novelty. Future events do not enter either
+   input. Late events trigger full identity recomputation. Historical what-if
+   analysis uses the offline engine and does not mutate persisted current state.
 3. Adapt wire records to the existing function; do not pass raw JSON directly:
 
 ```python

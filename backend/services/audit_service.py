@@ -14,6 +14,7 @@ def record_audit_log(
     resource_type: str,
     resource_id: str | None = None,
     details: dict[str, Any] | None = None,
+    commit: bool = True,
 ) -> AuditLog:
     """Record an immutable security audit trail entry."""
     log = AuditLog(
@@ -25,7 +26,10 @@ def record_audit_log(
         details=details,
     )
     db.add(log)
-    db.commit()
-    db.refresh(log)
+    if commit:
+        db.commit()
+        db.refresh(log)
+    else:
+        db.flush()
     return log
 

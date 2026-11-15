@@ -13,6 +13,7 @@ from ..models.alert import Alert
 from ..models.base import utc_now
 from ..models.event import LoginEvent
 from ..models.incident import Incident
+from .coordination import lock_identity
 from services.detection.incident_correlation import INCIDENT_TYPE, correlate_incidents
 from services.detection.risk_scoring import score_risk
 from services.detection.rules import detect_failed_login_burst, detect_unfamiliar_login_event
@@ -210,6 +211,9 @@ def _reconcile_incidents(db: Session, identity: str, results: list[dict[str, Any
 def reconcile_identity(db: Session, identity: str, *, evaluation_time: datetime) -> None:
     """Correctness-first full-history recomputation for one exact identity."""
     now = _evaluation_time(evaluation_time)
+    state = lock_identity(db, identity)
+    if state.evaluated_through is not None:
+        now = max(now, _utc(state.evaluated_through))
     events = list(db.execute(
         select(LoginEvent).where(LoginEvent.user_id == identity)
         .order_by(LoginEvent.timestamp, LoginEvent.event_id)
@@ -230,6 +234,7 @@ def reconcile_identity(db: Session, identity: str, *, evaluation_time: datetime)
         min_history=settings.MIN_HISTORY_FOR_NOVELTY,
     )
     _reconcile_incidents(db, identity, correlated, eligible)
+    state.evaluated_through = now
     db.commit()
 
 
@@ -237,15 +242,26 @@ def process_event_detection(db: Session, event: LoginEvent,
                             *, evaluation_time: datetime | None = None) -> dict[str, Any] | None:
     """Evaluate at processing time; future events remain pending until reevaluation."""
     now = _evaluation_time(evaluation_time or datetime.now(timezone.utc))
-    if _utc(event.timestamp) > now:
-        return None
     try:
         reconcile_identity(db, event.user_id, evaluation_time=now)
+    except Exception:
+        db.rollback()
+        logger.error("Detection reconciliation failed for event %s", event.event_id)
+        try:
+            failed = db.get(LoginEvent, event.event_id)
+            if failed is not None:
+                failed.detection_status = "failed"
+                db.commit()
+        except Exception:
+            db.rollback()
+            logger.error("Could not mark detection failure for event %s", event.event_id)
+        return None
+    try:
         db.refresh(event)
         return event.detection_result
     except Exception:
+        # Transaction B has already committed. A failed response read cannot
+        # retroactively mark completed detection as failed.
         db.rollback()
-        logger.exception("Detection reconciliation failed for event %s", event.event_id)
-        event.detection_status = "failed"
-        db.commit()
+        logger.error("Could not load completed detection for event %s", event.event_id)
         return None

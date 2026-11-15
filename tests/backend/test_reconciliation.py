@@ -446,3 +446,12 @@ def test_reevaluate_due_orders_identities_and_leaves_future_events_pending(backe
     assert visited[-1] == "a-synthetic"
     with SessionLocal() as db:
         assert db.get(LoginEvent, "a-future").detection_status == "evaluated"
+    with pytest.raises(SystemExit):
+        manage.main(["reevaluate-due", "--at", (BASE + timedelta(minutes=5)).isoformat(),
+                     "--identity", "a-synthetic"])
+    monkeypatch.setattr(manage, "_utc_now", lambda: BASE + timedelta(minutes=12))
+    with pytest.raises(SystemExit):
+        manage.main(["reevaluate-due", "--at", (BASE + timedelta(minutes=20)).isoformat(),
+                     "--identity", "a-synthetic"])
+    with SessionLocal() as db:
+        assert db.get(LoginEvent, "a-future").detection_status == "evaluated"

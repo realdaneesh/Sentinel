@@ -3,6 +3,9 @@
 from datetime import datetime
 from typing import Any
 from sqlalchemy import func, select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from ..models.event import LoginEvent
@@ -15,6 +18,10 @@ class EventConflictError(Exception):
     def __init__(self, event_id: str):
         self.event_id = event_id
         super().__init__(f"event_id already exists with different content: {event_id}")
+
+
+class StorageUnavailableError(Exception):
+    """Event durability could not be confirmed; caller may retry the same ID."""
 
 
 def ingest_event(
@@ -33,38 +40,47 @@ def ingest_event(
     """
     payload_hash = payload.canonical_hash()
 
-    # Query for existing event with this ID
-    existing = db.execute(
-        select(LoginEvent).where(LoginEvent.event_id == payload.event_id)
-    ).scalar_one_or_none()
-
-    if existing is not None:
+    # A targeted conflict clause makes event_id the only replay discriminator.
+    # Other integrity failures remain storage failures, never false duplicates.
+    values = dict(event_id=payload.event_id, user_id=payload.user_id,
+                  timestamp=payload.parsed_datetime(), event_type=payload.event_type,
+                  source=payload.source, ip_address=payload.ip_address,
+                  device_id=payload.device_id, failure_reason=payload.failure_reason,
+                  payload_hash=payload_hash, raw_payload=payload.model_dump(),
+                  detection_status="pending")
+    dialect = db.get_bind().dialect.name
+    if dialect == "sqlite":
+        stmt = sqlite_insert(LoginEvent).values(**values).on_conflict_do_nothing(
+            index_elements=[LoginEvent.event_id])
+    elif dialect == "postgresql":
+        stmt = pg_insert(LoginEvent).values(**values).on_conflict_do_nothing(
+            index_elements=[LoginEvent.event_id])
+    else:
+        raise StorageUnavailableError("Unsupported database dialect")
+    try:
+        inserted = db.execute(stmt).rowcount == 1
+        if inserted:
+            db.commit()  # Transaction A: accepted event is durable before detection.
+        else:
+            db.rollback()
+    except SQLAlchemyError as exc:
+        db.rollback()
+        raise StorageUnavailableError("Event storage unavailable") from exc
+    try:
+        existing = db.get(LoginEvent, payload.event_id)
+    except SQLAlchemyError as exc:
+        db.rollback()
+        raise StorageUnavailableError("Event storage unavailable") from exc
+    if existing is None:
+        raise StorageUnavailableError("Event storage unavailable")
+    if not inserted:
         if existing.payload_hash == payload_hash:
             return 200, "duplicate", existing.detection_result
-        else:
-            raise EventConflictError(payload.event_id)
-
-    # Persist new event
-    new_event = LoginEvent(
-        event_id=payload.event_id,
-        user_id=payload.user_id,
-        timestamp=payload.parsed_datetime(),
-        event_type=payload.event_type,
-        source=payload.source,
-        ip_address=payload.ip_address,
-        device_id=payload.device_id,
-        failure_reason=payload.failure_reason,
-        payload_hash=payload_hash,
-        raw_payload=payload.model_dump(),
-        detection_status="pending",
-    )
-    db.add(new_event)
-    db.commit()
-    db.refresh(new_event)
+        raise EventConflictError(payload.event_id)
 
     detection_result = None
     if run_detection:
-        detection_result = process_event_detection(db, new_event, evaluation_time=evaluation_time)
+        detection_result = process_event_detection(db, existing, evaluation_time=evaluation_time)
 
     return 201, "accepted", detection_result
 

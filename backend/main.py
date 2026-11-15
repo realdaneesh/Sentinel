@@ -4,18 +4,20 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from sqlalchemy.exc import SQLAlchemyError
 
 from .api.v1 import alerts, auth, events, incidents, simulator
 from .config import settings
-from .database import init_db
+from .database import require_current_schema
 from .logging import logger
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application startup and shutdown events."""
-    logger.info("Initializing Sentinel database...")
-    init_db()
+    logger.info("Checking Sentinel database schema...")
+    if settings.ENVIRONMENT != "testing":
+        require_current_schema()
     logger.info("Sentinel backend startup complete.")
     yield
     logger.info("Sentinel backend shutting down.")
@@ -29,6 +31,16 @@ app = FastAPI(
     docs_url="/docs",
     redoc_url="/redoc",
 )
+
+
+@app.exception_handler(SQLAlchemyError)
+async def storage_error_handler(request: Request, exc: SQLAlchemyError) -> JSONResponse:
+    """Never return driver exceptions or SQL text to API callers."""
+    logger.error("Database operation failed")
+    return JSONResponse(status_code=503, content={"error": {
+        "code": "STORAGE_UNAVAILABLE", "message": "Storage unavailable; retry later",
+        "details": [{"field": "$", "code": "storage_unavailable"}],
+    }})
 
 # CORS middleware
 app.add_middleware(

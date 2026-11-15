@@ -2,7 +2,7 @@
 
 from datetime import datetime
 from typing import Any
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Index, Integer, JSON, String, Table, Text
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Index, Integer, JSON, String, Table, Text, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ..database import Base
@@ -114,6 +114,10 @@ class Incident(Base):
     __table_args__ = (
         Index("ix_incidents_user_id_status", "user_id", "status"),
         Index("ix_incidents_severity_risk", "severity", "risk_score"),
+        Index("uq_current_incident_fingerprint", "user_id", "incident_type",
+              "evidence_fingerprint", unique=True,
+              sqlite_where=text("is_current = 1 AND evidence_fingerprint IS NOT NULL"),
+              postgresql_where=text("is_current = true AND evidence_fingerprint IS NOT NULL")),
     )
 
     def __repr__(self) -> str:

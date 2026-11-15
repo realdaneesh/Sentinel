@@ -10,6 +10,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, event, select
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.pool import StaticPool
 
 from backend.config import Settings, settings
@@ -145,6 +146,45 @@ def test_role_and_audit_share_one_commit(secured_client):
     with SessionLocal() as db:
         assert db.get(User, users["viewer"].id).role == "viewer"
         assert db.execute(select(AuditLog).where(AuditLog.action == "CHANGE_USER_ROLE")).first() is None
+
+
+@pytest.mark.parametrize("kind", ["incident", "alert"])
+def test_analyst_update_rolls_back_when_audit_write_fails(secured_client, monkeypatch, kind):
+    client, SessionLocal, _, _, _ = secured_client
+    now = datetime(2026, 11, 14, 12, tzinfo=timezone.utc)
+    with SessionLocal() as db:
+        incident = Incident(incident_id="inc-audit-failure", user_id="synthetic-target",
+                            title="Synthetic incident", incident_type="failed_login_burst_followed_by_unfamiliar_login",
+                            risk_score=75, severity="CRITICAL", status="open", start_time=now,
+                            end_time=now, signals=["failed_login_burst"], explanations=["synthetic"])
+        alert = Alert(alert_id="alt-audit-failure", incident=incident,
+                      alert_type="THREAT_INCIDENT_CORRELATED", severity="CRITICAL",
+                      message="Synthetic alert", is_acknowledged=False)
+        db.add_all([incident, alert])
+        db.commit()
+
+    def fail_audit(*args, **kwargs):
+        raise SQLAlchemyError("synthetic audit storage failure")
+
+    if kind == "incident":
+        from backend.api.v1 import incidents as route
+        monkeypatch.setattr(route, "record_audit_log", fail_audit)
+        response = client.patch("/api/v1/incidents/inc-audit-failure",
+                                json={"status": "investigating", "description": "Synthetic analyst note"},
+                                headers=_jwt_headers(client, "security_analyst"))
+    else:
+        from backend.api.v1 import alerts as route
+        monkeypatch.setattr(route, "record_audit_log", fail_audit)
+        response = client.patch("/api/v1/alerts/alt-audit-failure",
+                                json={"is_acknowledged": True},
+                                headers=_jwt_headers(client, "security_analyst"))
+    assert response.status_code == 503
+    assert "synthetic audit storage failure" not in response.text
+    with SessionLocal() as db:
+        assert db.get(Incident, "inc-audit-failure").status == "open"
+        assert db.get(Incident, "inc-audit-failure").description is None
+        assert db.get(Alert, "alt-audit-failure").is_acknowledged is False
+        assert db.scalar(select(AuditLog).where(AuditLog.resource_id == "inc-audit-failure")) is None
 
 
 def test_old_jwt_uses_current_database_role_and_inactive_state(secured_client):

@@ -68,6 +68,7 @@ def update_incident(
     incident_id: str,
     status: str | None = None,
     description: str | None = None,
+    commit: bool = True,
 ) -> Incident | None:
     """Update investigation status or analyst description of an incident."""
     incident = get_incident_by_id(db, incident_id)
@@ -80,6 +81,7 @@ def update_incident(
         incident.description = description
     incident.updated_at = utc_now()
 
-    db.commit()
-    db.refresh(incident)
+    if commit:
+        db.commit()
+        db.refresh(incident)
     return incident

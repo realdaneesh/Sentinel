@@ -24,12 +24,36 @@ from ...models.producer import EventProducer
 from ...security.dependencies import require_producer, require_producer_source, require_role
 from ...services.event_service import (
     EventConflictError,
+    StorageUnavailableError,
     get_event_by_id,
     ingest_event,
     list_events,
 )
 
 router = APIRouter(tags=["Events"])
+
+
+def _unique_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    value = {}
+    for key, item in pairs:
+        if key in value:
+            raise ValueError("duplicate JSON object key")
+        value[key] = item
+    return value
+
+
+def _invalid_json() -> JSONResponse:
+    return JSONResponse(status_code=400, content={"error": {
+        "code": "INVALID_JSON", "message": "Malformed JSON body",
+        "details": [{"field": "$", "code": "invalid_json"}],
+    }})
+
+
+def _storage_unavailable() -> JSONResponse:
+    return JSONResponse(status_code=503, content={"error": {
+        "code": "STORAGE_UNAVAILABLE", "message": "Event storage unavailable; retry with the same event_id",
+        "details": [{"field": "$", "code": "storage_unavailable"}],
+    }})
 
 
 @router.post(
@@ -52,7 +76,7 @@ async def post_event(
 ) -> Response:
     """Ingest a single authentication event adhering to v1 event schema and API contracts."""
     content_type = request.headers.get("content-type", "")
-    if not content_type.startswith("application/json"):
+    if content_type.split(";", 1)[0].strip().lower() != "application/json":
         return JSONResponse(
             status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
             content={
@@ -77,7 +101,7 @@ async def post_event(
                     }
                 },
             )
-        data = json.loads(raw_body)
+        data = json.loads(raw_body, object_pairs_hook=_unique_object)
         if not isinstance(data, dict):
             return JSONResponse(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -89,17 +113,8 @@ async def post_event(
                     }
                 },
             )
-    except json.JSONDecodeError:
-        return JSONResponse(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            content={
-                "error": {
-                    "code": "INVALID_JSON",
-                    "message": "Malformed JSON body",
-                    "details": [{"field": "$", "code": "invalid_json"}],
-                }
-            },
-        )
+    except (json.JSONDecodeError, ValueError):
+        return _invalid_json()
 
     # Validate against EventIngestPayload
     try:
@@ -162,6 +177,8 @@ async def post_event(
                 }
             },
         )
+    except StorageUnavailableError:
+        return _storage_unavailable()
 
 
 @router.post(
@@ -176,18 +193,14 @@ async def post_login_event(
 ) -> Response:
     """Convenience endpoint accepting either canonical v1 events or flexible login formats."""
     try:
-        body = await request.json()
-    except Exception:
-        return JSONResponse(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            content={
-                "error": {
-                    "code": "INVALID_JSON",
-                    "message": "Malformed JSON body",
-                    "details": [{"field": "$", "code": "invalid_json"}],
-                }
-            },
-        )
+        body = json.loads(await request.body(), object_pairs_hook=_unique_object)
+    except (json.JSONDecodeError, ValueError):
+        return _invalid_json()
+    if not isinstance(body, dict):
+        return JSONResponse(status_code=422, content={"error": {
+            "code": "VALIDATION_ERROR", "message": "Request body must be a JSON object",
+            "details": [{"field": "$", "code": "invalid_type"}],
+        }})
 
     # Normalize alternate field names if present
     normalized = dict(body)
@@ -262,6 +275,8 @@ async def post_login_event(
                 }
             },
         )
+    except StorageUnavailableError:
+        return _storage_unavailable()
 
 
 @router.get(

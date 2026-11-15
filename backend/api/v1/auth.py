@@ -3,6 +3,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from ...database import get_db
@@ -22,6 +23,7 @@ from ...services.auth_service import (
     create_access_token,
     create_user,
 )
+from ...services.coordination import lock_administrators
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
@@ -44,6 +46,7 @@ def register(
             password=payload.password,
             email=payload.email,
             role="viewer",
+            commit=False,
         )
         from ...services.audit_service import record_audit_log
         record_audit_log(
@@ -53,7 +56,9 @@ def register(
             resource_type="user",
             resource_id=user.id,
             details={"username": user.username, "role": user.role},
+            commit=False,
         )
+        db.commit()
         return UserResponse.model_validate(user)
     except IntegrityError:
         db.rollback()
@@ -61,6 +66,9 @@ def register(
             status_code=status.HTTP_409_CONFLICT,
             detail=f"Username '{payload.username}' is already taken",
         )
+    except SQLAlchemyError:
+        db.rollback()
+        raise HTTPException(status_code=503, detail="Storage unavailable")
 
 
 @router.post(
@@ -125,29 +133,38 @@ def update_user_role(
     db: Session = Depends(get_db),
 ) -> UserResponse:
     """Change a role as an administrator while preserving an active administrator."""
-    user = db.get(User, user_id)
-    if user is None:
-        raise HTTPException(status_code=404, detail="User not found")
-    old_role = user.role
-    if old_role == "admin" and payload.role != "admin" and user.account_status == "active":
-        active_admins = db.scalar(
-            select(func.count()).select_from(User).where(
-                User.role == "admin", User.account_status == "active"
+    try:
+        actor_id = current_user.id
+        lock_administrators(db)
+        db.expire_all()  # Re-read the authoritative role after acquiring the guard.
+        actor = db.get(User, actor_id)
+        if actor is None or actor.account_status != "active" or actor.role != "admin":
+            raise HTTPException(status_code=403, detail="Administrator access required")
+        user = db.get(User, user_id)
+        if user is None:
+            raise HTTPException(status_code=404, detail="User not found")
+        old_role = user.role
+        if old_role == "admin" and payload.role != "admin" and user.account_status == "active":
+            active_admins = db.scalar(
+                select(func.count()).select_from(User).where(
+                    User.role == "admin", User.account_status == "active"
+                )
             )
-        )
-        if active_admins <= 1:
-            raise HTTPException(status_code=409, detail="Cannot demote the final active administrator")
-    if payload.role != old_role:
-        user.role = payload.role
-        db.add(AuditLog(
-            actor=current_user.username,
-            action="CHANGE_USER_ROLE",
-            resource_type="user",
-            resource_id=user.id,
-            timestamp=utc_now(),
-            details={"old_role": old_role, "new_role": payload.role},
-        ))
+            if active_admins <= 1:
+                raise HTTPException(status_code=409, detail="Cannot demote the final active administrator")
+        if payload.role != old_role:
+            user.role = payload.role
+            db.add(AuditLog(
+                actor=actor.username,
+                action="CHANGE_USER_ROLE",
+                resource_type="user",
+                resource_id=user.id,
+                timestamp=utc_now(),
+                details={"old_role": old_role, "new_role": payload.role},
+            ))
         db.commit()
-        db.refresh(user)
-    return UserResponse.model_validate(user)
+        return UserResponse.model_validate(user)
+    except SQLAlchemyError:
+        db.rollback()
+        raise HTTPException(status_code=503, detail="Storage unavailable")
 

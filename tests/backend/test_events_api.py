@@ -56,6 +56,48 @@ def client_with_db():
 
 
 class TestEventIngestionContract:
+    def test_storage_failure_maps_to_safe_503(self, client_with_db, monkeypatch):
+        from backend.api.v1 import events
+        from backend.services.event_service import StorageUnavailableError
+
+        def unavailable(*args, **kwargs):
+            raise StorageUnavailableError("synthetic internal detail")
+
+        monkeypatch.setattr(events, "ingest_event", unavailable)
+        response = client_with_db.post("/api/v1/events", json={
+            "schema_version": "1.0", "event_id": "storage-error",
+            "user_id": "synthetic-user", "event_type": "LOGIN_FAILURE",
+            "timestamp": "2026-11-14T12:00:00Z", "source": "campus-portal",
+        })
+        assert response.status_code == 503
+        assert response.json()["error"]["code"] == "STORAGE_UNAVAILABLE"
+        assert "synthetic internal detail" not in response.text
+        assert client_with_db.get("/api/v1/events").json()["total"] == 0
+
+    @pytest.mark.parametrize("route", ["/events", "/api/v1/events", "/api/v1/events/login"])
+    def test_duplicate_json_keys_are_rejected_before_persistence(self, client_with_db, route):
+        body = ('{"schema_version":"1.0","event_id":"duplicate-key",'
+                '"event_id":"other-id","user_id":"synthetic-user",'
+                '"event_type":"LOGIN_FAILURE","timestamp":"2026-11-14T12:00:00Z",'
+                '"source":"campus-portal"}')
+        response = client_with_db.post(route, content=body,
+                                       headers={"Content-Type": "application/json"})
+        assert response.status_code == 400
+        assert response.json()["error"]["code"] == "INVALID_JSON"
+        assert client_with_db.get("/api/v1/events").json()["total"] == 0
+
+    @pytest.mark.parametrize("field", ["ip_address", "device_id", "failure_reason"])
+    def test_explicit_optional_null_is_rejected_but_omission_is_valid(self, client_with_db, field):
+        body = {"schema_version": "1.0", "event_id": f"null-{field}",
+                "user_id": "synthetic-user", "event_type": "LOGIN_FAILURE",
+                "timestamp": "2026-11-14T12:00:00Z", "source": "campus-portal",
+                field: None}
+        response = client_with_db.post("/api/v1/events", json=body)
+        assert response.status_code == 422
+        assert response.json()["error"]["code"] == "VALIDATION_ERROR"
+        del body[field]
+        assert client_with_db.post("/api/v1/events", json=body).status_code == 201
+
     def test_post_event_201_created(self, client_with_db):
         """Test accepting a valid v1 event returns 201 Created."""
         payload = {

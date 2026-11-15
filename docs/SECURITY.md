@@ -27,12 +27,10 @@ The final active administrator cannot be demoted. Changes are recorded in `audit
 Authorization checks reload the active user and role from the database on each request,
 so old JWTs do not preserve revoked roles. Disabled or suspended users are rejected.
 
-The final-admin count check is effective for sequential requests but is not serialized
-across concurrent processes. Two administrators demoting each other at the same time
-could both observe a count of two. A production migration must enforce this invariant
-with a database-level serialized transaction or trigger, and the role update must use
-that transaction. The same concurrency concern applies to simultaneous first-admin
-bootstrap commands. Until then, perform these operations one at a time.
+Task 008D serializes bootstrap and role changes through a database guard row
+before reading the active-admin count. Separate-session SQLite tests cover
+concurrent bootstrap and simultaneous demotions. PostgreSQL execution remains
+unverified; no account deactivation or deletion API is exposed.
 
 ## Event producers
 
@@ -59,8 +57,8 @@ Rotate or revoke by producer ID:
 
 Rotation invalidates the previous key for subsequent checks and prints the replacement
 once. Revocation disables subsequent key checks. A request already authorized before a
-concurrent rotation or revocation may still finish; ordered transaction handling belongs
-to Task 008D. A wildcard test source is accepted only when
+concurrent rotation or revocation may still finish; Task 008D does not cancel
+in-flight requests already authorized before the credential change. A wildcard test source is accepted only when
 `ENVIRONMENT=testing`; normal provisioning requires an exact source.
 
 ## Simulator
@@ -73,18 +71,19 @@ Production denies API simulator persistence even if the flag is set. The offline
 
 ## Existing database migration
 
-Task 008B adds the `event_producers` table. A fresh SQLite database gets it at startup
-through `Base.metadata.create_all`. Existing deployments need a reviewed migration that
-creates `event_producers` before any producer keys can be provisioned. `create_all` can add
-this table but is not a general schema migration mechanism. Existing historical public
-ingestion credentials do not exist, so each legitimate producer must be provisioned.
+Task 008B adds the `event_producers` table through Alembic revision `0002`.
+The Task 008D migration path validates an unversioned original backend schema
+before adoption and upgrade. Existing historical public ingestion credentials
+do not exist, so each legitimate producer must be provisioned. See
+[database migrations and transactions](DATABASE_MIGRATIONS_AND_TRANSACTIONS.md).
 No PostgreSQL migration or deployment has been verified.
 
 ## Remaining limits
 
 The role and producer administration commands require secure local OS and database access.
-Task 008C will address incident reconciliation. Task 008D will address concurrent replay,
-transaction consistency, database failure mapping, and the database-level final-admin
-invariant described above. Role changes and their audit rows use one commit, but bootstrap
-account creation and its audit row use separate commits. Production readiness and PostgreSQL
-compatibility remain unverified.
+Task 008C reconciles persistent incidents. Task 008D uses database-backed guards
+for bootstrap, role changes, and same-identity reconciliation. Bootstrap and its
+audit row now share one transaction, as do role changes and supported analyst
+updates. SQLite concurrent operations have isolated regression tests. A
+database-level immutable audit policy is not implemented. Production readiness
+and PostgreSQL compatibility remain unverified.

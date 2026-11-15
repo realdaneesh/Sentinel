@@ -74,6 +74,7 @@ def create_user(
     password: str,
     email: str | None = None,
     role: str = "viewer",
+    commit: bool = True,
 ) -> User:
     """Create and persist a new user."""
     password_hash = hash_password(password)
@@ -85,7 +86,10 @@ def create_user(
         account_status="active",
     )
     db.add(user)
-    db.commit()
-    db.refresh(user)
+    if commit:
+        db.commit()
+        db.refresh(user)
+    else:
+        db.flush()
     return user
 
